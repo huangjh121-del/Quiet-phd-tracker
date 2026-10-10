@@ -1,0 +1,8 @@
+name = "quiet-tracker"
+compatibility_date = "2024-03-20"
+pages_build_output_dir = ".vercel/output/static"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "quiet-tracker-db"
+database_id = "73244dd8-9555-4349-8b3f-1193349eb897"

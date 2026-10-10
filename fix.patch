@@ -1,0 +1,13 @@
+--- src/app/page.tsx
++++ src/app/page.tsx
+@@ -302,6 +302,6 @@
+                   <div 
+                     key={i} 
+-                    className={`aspect-square rounded-md transition-colors ${
++                    className={"aspect-square rounded-md transition-colors " + (
+                       i > 24 ? 'bg-[#F3F4F6]' : 
+                       i % 4 === 0 ? 'bg-[#5B8266]' : 
+                       i % 3 === 0 ? 'bg-[#8CA894]' : 'bg-[#C5D4C9]'
+-                    }`}
++                    )}
+                   ></div>

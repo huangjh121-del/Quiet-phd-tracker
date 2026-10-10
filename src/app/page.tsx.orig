@@ -1,0 +1,328 @@
+'use client';
+
+import React, { useState, useRef } from 'react';
+import { BookOpen, Target, Settings, Search, Clock, Plus, ChevronRight, Bookmark, X, Upload, Loader2 } from 'lucide-react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Setup pdf.js worker using unpkg CDN to avoid Next.js bundling issues
+if (typeof window !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "//unpkg.com/pdfjs-dist@" + pdfjsLib.version + "/build/pdf.worker.min.mjs";
+}
+
+export default function Home() {
+  const router = useRouter();
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [isExtracting, setIsExtracting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImport = () => {
+    if (importText.trim().length > 0) {
+      localStorage.setItem('quiet_article', importText);
+      router.push('/reader');
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== 'application/pdf') {
+      alert("Please select a valid PDF file.");
+      return;
+    }
+
+    setIsExtracting(true);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      
+      let fullText = "";
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        // Simple extraction: join items. A more robust implementation would check positions.
+        const pageText = textContent.items.map((item: any) => item.str).join(" ");
+        fullText += pageText + "\\n\\n";
+      }
+      
+      setImportText(fullText.trim());
+    } catch (err) {
+      console.error("Error extracting PDF:", err);
+      alert("Could not extract text from this PDF. It might be a scanned image or protected.");
+    } finally {
+      setIsExtracting(false);
+      // Reset input so the same file can be uploaded again if needed
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#FAF9F6] text-[#1C1C1C] selection:bg-[#E2E8F0]">
+      {/* Top Navigation */}
+      <nav className="border-b border-[#E5E5E5] bg-white/50 backdrop-blur-md sticky top-0 z-40">
+        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-[#111827] rounded-lg flex items-center justify-center">
+              <BookOpen className="text-white w-4 h-4" />
+            </div>
+            <span className="font-serif font-bold text-lg tracking-tight">Quiet Tracker</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <button className="text-[#6B7280] hover:text-[#111827] transition-colors p-2">
+              <Search className="w-5 h-5" />
+            </button>
+            <button className="text-[#6B7280] hover:text-[#111827] transition-colors p-2">
+              <Settings className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      {/* Main Content */}
+      <div className="max-w-6xl mx-auto px-6 py-12 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-12">
+        
+        {/* Left Column: Library & Review */}
+        <div className="space-y-12">
+          
+          {/* Section: Library */}
+          <section>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-serif font-semibold text-[#111827]">Library</h2>
+              <div className="flex gap-4 items-center">
+                <button 
+                  onClick={() => setShowImportModal(true)}
+                  className="text-sm font-bold tracking-wide uppercase text-[#3D5A80] hover:text-[#111827] transition-colors flex items-center"
+                >
+                  <Plus className="w-4 h-4 mr-1" /> Import Document
+                </button>
+                <Link href="/reader" className="text-sm font-medium text-[#6B7280] hover:text-[#111827] transition-colors flex items-center group">
+                  View All <ChevronRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
+                </Link>
+              </div>
+            </div>
+
+            {/* Import Modal */}
+            {showImportModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#111827]/40 backdrop-blur-sm">
+                <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95 flex flex-col max-h-[90vh]">
+                  
+                  <div className="flex justify-between items-center p-6 border-b border-[#E5E5E5] shrink-0">
+                    <h3 className="font-serif text-xl font-bold text-[#111827]">Import New Reading</h3>
+                    <button onClick={() => setShowImportModal(false)} className="text-[#6B7280] hover:text-[#111827] transition-colors">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                  
+                  <div className="p-6 flex-1 overflow-y-auto flex flex-col gap-4">
+                    {/* File Upload Area */}
+                    <div 
+                      className="border-2 border-dashed border-[#D1D5DB] hover:border-[#3D5A80] bg-[#FAF9F6] rounded-2xl p-8 flex flex-col items-center justify-center text-center transition-colors cursor-pointer group"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <input 
+                        type="file" 
+                        accept="application/pdf" 
+                        ref={fileInputRef} 
+                        onChange={handleFileUpload} 
+                        className="hidden" 
+                      />
+                      {isExtracting ? (
+                        <>
+                          <Loader2 className="w-10 h-10 text-[#3D5A80] animate-spin mb-4" />
+                          <p className="font-bold text-[#111827]">Extracting text from PDF...</p>
+                          <p className="text-sm text-[#6B7280] mt-1">This might take a few seconds.</p>
+                        </>
+                      ) : (
+                        <>
+                          <div className="w-12 h-12 bg-white rounded-full shadow-sm flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                            <Upload className="w-5 h-5 text-[#3D5A80]" />
+                          </div>
+                          <p className="font-bold text-[#111827]">Click to upload a PDF</p>
+                          <p className="text-sm text-[#6B7280] mt-1">We'll automatically extract the text for you.</p>
+                        </>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-4 py-2">
+                      <div className="h-px bg-[#E5E5E5] flex-1"></div>
+                      <span className="text-xs font-bold text-[#9CA3AF] uppercase tracking-widest">OR</span>
+                      <div className="h-px bg-[#E5E5E5] flex-1"></div>
+                    </div>
+
+                    <textarea
+                      value={importText}
+                      onChange={(e) => setImportText(e.target.value)}
+                      placeholder="Paste your raw English text here..."
+                      className="w-full h-40 p-4 border border-[#E5E5E5] rounded-xl focus:outline-none focus:ring-4 focus:ring-[#3D5A80]/10 focus:border-[#3D5A80] text-[#374151] resize-none"
+                    ></textarea>
+                  </div>
+
+                  <div className="p-6 bg-[#FAF9F6] border-t border-[#E5E5E5] flex justify-end gap-3 shrink-0">
+                    <button onClick={() => setShowImportModal(false)} className="px-5 py-2.5 text-sm font-bold text-[#6B7280] hover:text-[#111827] transition-colors">
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={handleImport} 
+                      disabled={importText.trim().length === 0}
+                      className="px-5 py-2.5 bg-[#111827] hover:bg-[#374151] disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-bold rounded-xl transition-all shadow-md flex items-center gap-2"
+                    >
+                      <BookOpen className="w-4 h-4" /> Start Reading
+                    </button>
+                  </div>
+
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Book Card 1 */}
+                <div className="bg-white p-8 rounded-3xl border border-[#E5E5E5] hover:border-[#D1D5DB] hover:shadow-sm transition-all flex flex-col justify-between group h-full">
+                  <div>
+                    <div className="flex justify-between items-start mb-5">
+                      <span className="text-[11px] font-bold tracking-widest uppercase bg-[#F3F4F6] text-[#4B5563] px-3 py-1.5 rounded-full">The Economist</span>
+                      <Bookmark className="w-5 h-5 text-[#D1D5DB] group-hover:text-[#111827] transition-colors" />
+                    </div>
+                    <h3 className="font-serif font-bold text-2xl mb-2 leading-tight text-[#111827]">How to fix the global economy</h3>
+                    <p className="text-sm text-[#6B7280] mb-8 font-medium">Finance & Economics · 2026</p>
+                  </div>
+                  
+                  <div>
+                    <div className="space-y-3 mb-6">
+                      <div className="flex justify-between text-xs font-bold tracking-wide text-[#4B5563] uppercase">
+                        <span>Progress</span>
+                        <span>45%</span>
+                      </div>
+                      <div className="w-full bg-[#F3F4F6] rounded-full h-2 overflow-hidden">
+                        <div className="bg-[#3D5A80] h-full rounded-full transition-all duration-500" style={{ width: '45%' }}></div>
+                      </div>
+                    </div>
+                    <Link href="/reader" className="block w-full bg-[#111827] hover:bg-[#374151] text-white text-sm font-semibold py-3.5 rounded-2xl transition-colors text-center">
+                      Continue Reading
+                    </Link>
+                  </div>
+                </div>
+
+                {/* Book Card 2 */}
+                <div className="bg-white p-8 rounded-3xl border border-[#E5E5E5] hover:border-[#D1D5DB] hover:shadow-sm transition-all flex flex-col justify-between group h-full">
+                  <div>
+                    <div className="flex justify-between items-start mb-5">
+                      <span className="text-[11px] font-bold tracking-widest uppercase bg-[#F3F4F6] text-[#4B5563] px-3 py-1.5 rounded-full">Book</span>
+                      <Bookmark className="w-5 h-5 text-[#D1D5DB] group-hover:text-[#111827] transition-colors" />
+                    </div>
+                    <h3 className="font-serif font-bold text-2xl mb-2 leading-tight text-[#111827]">Atomic Habits</h3>
+                    <p className="text-sm text-[#6B7280] mb-8 font-medium">James Clear · 2018</p>
+                  </div>
+
+                  <div>
+                    <div className="space-y-3 mb-6">
+                      <div className="flex justify-between text-xs font-bold tracking-wide text-[#4B5563] uppercase">
+                        <span>Progress</span>
+                        <span>12%</span>
+                      </div>
+                      <div className="w-full bg-[#F3F4F6] rounded-full h-2 overflow-hidden">
+                        <div className="bg-[#5B8266] h-full rounded-full transition-all duration-500" style={{ width: '12%' }}></div>
+                      </div>
+                    </div>
+                    <Link href="/reader" className="block w-full bg-[#F3F4F6] hover:bg-[#E5E7EB] text-[#111827] text-sm font-semibold py-3.5 rounded-2xl transition-colors text-center">
+                      Continue Reading
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* Section: Recent Expressions Review */}
+            <section>
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-serif font-semibold text-[#111827]">Due for Review <span className="text-[#6B7280] text-lg font-normal ml-1">(12)</span></h2>
+                <button className="text-sm font-medium text-[#6B7280] hover:text-[#111827] transition-colors flex items-center group">
+                  Start Review <ChevronRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
+                </button>
+              </div>
+              <div className="bg-white rounded-3xl border border-[#E5E5E5] overflow-hidden">
+                <div className="divide-y divide-[#F3F4F6]">
+                  {/* Expression Item */}
+                  <div className="p-6 hover:bg-[#FAFAFA] transition-colors cursor-pointer flex justify-between items-center group">
+                    <div className="pr-4">
+                      <h4 className="font-serif font-bold text-xl text-[#111827] mb-2 group-hover:text-[#3D5A80] transition-colors">status quo</h4>
+                      <p className="text-sm text-[#6B7280] leading-relaxed line-clamp-1">They are defending the <span className="font-semibold text-[#111827] bg-[#F3F4F6] px-1.5 py-0.5 rounded">status quo</span> rather than innovating.</p>
+                    </div>
+                    <span className="text-[10px] font-bold tracking-wider uppercase bg-[#FEE2E2] text-[#991B1B] px-3 py-1.5 rounded-full whitespace-nowrap">Due Today</span>
+                  </div>
+                  {/* Expression Item */}
+                  <div className="p-6 hover:bg-[#FAFAFA] transition-colors cursor-pointer flex justify-between items-center group">
+                    <div className="pr-4">
+                      <h4 className="font-serif font-bold text-xl text-[#111827] mb-2 group-hover:text-[#3D5A80] transition-colors">mitigate</h4>
+                      <p className="text-sm text-[#6B7280] leading-relaxed line-clamp-1">Measures need to be taken to <span className="font-semibold text-[#111827] bg-[#F3F4F6] px-1.5 py-0.5 rounded">mitigate</span> the environmental impact.</p>
+                    </div>
+                    <span className="text-[10px] font-bold tracking-wider uppercase bg-[#FEE2E2] text-[#991B1B] px-3 py-1.5 rounded-full whitespace-nowrap">Due Today</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          {/* Right Column: Habit Tracker & Stats */}
+          <div className="space-y-6">
+            <section className="bg-[#111827] text-white p-8 rounded-3xl shadow-lg relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-[#3D5A80] rounded-full blur-3xl opacity-20 -mr-10 -mt-10"></div>
+              
+              <h2 className="text-sm font-bold tracking-widest uppercase text-[#9CA3AF] mb-8">Daily Goal</h2>
+              
+              <div className="flex flex-col items-center justify-center mb-8 relative z-10">
+                <div className="relative flex items-center justify-center w-40 h-40 mb-6">
+                  <svg className="w-full h-full transform -rotate-90">
+                    <circle cx="80" cy="80" r="70" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-[#374151]" />
+                    <circle cx="80" cy="80" r="70" stroke="currentColor" strokeWidth="6" fill="transparent" strokeDasharray="439.8" strokeDashoffset="175.9" className="text-[#E07A5F] transition-all duration-1000 ease-in-out drop-shadow-[0_0_8px_rgba(224,122,95,0.4)]" strokeLinecap="round" />
+                  </svg>
+                  <div className="absolute flex flex-col items-center">
+                    <span className="text-4xl font-bold font-serif">27</span>
+                    <span className="text-xs font-medium tracking-wide text-[#9CA3AF] mt-1 uppercase">/ 45 min</span>
+                  </div>
+                </div>
+                <p className="text-sm font-medium text-[#D1D5DB] text-center">
+                  18 mins left to reach today's goal.
+                </p>
+              </div>
+
+              <button className="w-full bg-[#E07A5F] hover:bg-[#D56A4D] text-white text-sm font-bold tracking-wide uppercase py-4 rounded-2xl transition-colors relative z-10">
+                Start Focus Timer
+              </button>
+            </section>
+
+            <section className="bg-white p-8 rounded-3xl border border-[#E5E5E5]">
+              <h2 className="text-sm font-bold tracking-widest uppercase text-[#6B7280] mb-6">Consistency</h2>
+              <div className="grid grid-cols-7 gap-2.5">
+                {/* Simulated Heatmap */}
+                {Array.from({ length: 28 }).map((_, i) => (
+                  <div 
+                    key={i} 
+                    className={"aspect-square rounded-md transition-colors " + (
+                      i > 24 ? 'bg-[#F3F4F6]' : 
+                      i % 4 === 0 ? 'bg-[#5B8266]' : 
+                      i % 3 === 0 ? 'bg-[#8CA894]' : 'bg-[#C5D4C9]'
+                    }`}
+                  ></div>
+                ))}
+              </div>
+              <div className="mt-6 flex justify-between items-center text-xs font-bold tracking-wide uppercase text-[#9CA3AF]">
+                <span>Less</span>
+                <div className="flex gap-1.5">
+                  <div className="w-3.5 h-3.5 bg-[#F3F4F6] rounded-sm"></div>
+                  <div className="w-3.5 h-3.5 bg-[#C5D4C9] rounded-sm"></div>
+                  <div className="w-3.5 h-3.5 bg-[#8CA894] rounded-sm"></div>
+                  <div className="w-3.5 h-3.5 bg-[#5B8266] rounded-sm"></div>
+                </div>
+                <span>More</span>
+              </div>
+            </section>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
+}
