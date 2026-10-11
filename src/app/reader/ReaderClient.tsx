@@ -203,7 +203,9 @@ export default function Reader() {
 
       if (blobOrBuffer) {
         try {
-          if (blobOrBuffer.type === 'text/plain') {
+          if (typeof blobOrBuffer === 'string') {
+            setFileData(blobOrBuffer);
+          } else if (blobOrBuffer.type === 'text/plain') {
             const text = typeof blobOrBuffer.text === 'function' ? await blobOrBuffer.text() : await new Response(blobOrBuffer).text();
             setFileData(text);
           } else {

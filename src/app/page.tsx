@@ -11,7 +11,7 @@ interface BookMetadata {
   id: string;
   title: string;
   author?: string;
-  type: 'pdf' | 'epub';
+  type: 'pdf' | 'epub' | 'text';
   category: 'book' | 'article';
   lastReadAt: number;
   progress: number;
@@ -24,6 +24,9 @@ export default function Home() {
   const router = useRouter();
   const [showImportModal, setShowImportModal] = useState(false);
   const [importCategory, setImportCategory] = useState<'book' | 'article'>('book');
+  const [importMethod, setImportMethod] = useState<'file' | 'text'>('file');
+  const [pastedTitle, setPastedTitle] = useState('');
+  const [pastedText, setPastedText] = useState('');
   const [isExtracting, setIsExtracting] = useState(false);
   const [libStats, setLibStats] = useState({ words: 0, phrases: 0, sentences: 0, dueWords: 0, duePhrases: 0 });
   const [readingStats, setReadingStats] = useState({ todayMins: 0, streak: 0, activeDays: [] as number[], history: {} as Record<string, number> });
@@ -45,8 +48,7 @@ export default function Home() {
       const words = wRes.items || [];
       const phrases = pRes.items || [];
       const sentences = sRes.sentences || [];
-      const [now, setNow] = useState(0);
-  useEffect(() => setNow(Date.now()), []);
+      const now = Date.now();
       setLibStats({
         words: words.length,
         phrases: phrases.length,
@@ -231,6 +233,70 @@ export default function Home() {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) processFile(file);
+  };
+
+  const handlePasteSave = async () => {
+    if (!pastedText.trim()) return;
+    setIsExtracting(true);
+    try {
+      const title = pastedTitle.trim() || pastedText.trim().split('\n')[0].slice(0, 50) || 'Pasted Article';
+      
+      // 1. Cloud Save to D1
+      let docId = Date.now().toString();
+      try {
+        const cloudRes = await fetch('/api/documents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'article',
+            title: title,
+            author: 'Pasted Text',
+            fileName: `${title.slice(0, 20)}.txt`,
+            fileKey: '',
+            content: pastedText,
+          })
+        });
+        if (cloudRes.ok) {
+          const cloudData = await cloudRes.json();
+          if (cloudData.document?.id) {
+            docId = cloudData.document.id;
+          }
+        }
+      } catch (cloudErr) {
+        console.warn("Cloud save failed, falling back to local:", cloudErr);
+      }
+
+      // 2. Local cache in localforage
+      const newDoc: BookMetadata = {
+        id: docId,
+        title: title,
+        author: 'Pasted Text',
+        type: 'text',
+        category: 'article',
+        lastReadAt: Date.now(),
+        progress: 0,
+        currentLocation: 0,
+        totalSize: pastedText.length,
+      };
+
+      const currentLib = await localforage.getItem<BookMetadata[]>('quiet_library') || [];
+      currentLib.unshift(newDoc);
+      await localforage.setItem('quiet_library', currentLib);
+
+      // Save content for offline / instant reader
+      const blob = new Blob([pastedText], { type: 'text/plain' });
+      await localforage.setItem(`quiet_book_${docId}`, blob);
+
+      setShowImportModal(false);
+      setPastedTitle('');
+      setPastedText('');
+      router.push(`/reader?id=${docId}`);
+    } catch (err) {
+      console.error("Failed to save pasted text:", err);
+      alert("Failed to save article");
+    } finally {
+      setIsExtracting(false);
+    }
   };
 
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); };
@@ -539,7 +605,7 @@ export default function Home() {
                 <h4 className="text-[11px] font-bold tracking-widest uppercase text-[#6B7280] mb-3">What are you importing?</h4>
                 <div className="flex gap-4">
                   <button 
-                    onClick={() => setImportCategory('book')}
+                    onClick={() => { setImportCategory('book'); setImportMethod('file'); }}
                     className={`flex-1 flex flex-col items-center justify-center gap-3 p-6 rounded-2xl border-2 transition-all ${importCategory === 'book' ? 'border-[#3D5A80] bg-[#3D5A80]/5' : 'border-[#E5E5E5] hover:border-[#D1D5DB] bg-white'}`}
                   >
                     <Book className={`w-8 h-8 ${importCategory === 'book' ? 'text-[#3D5A80]' : 'text-[#9CA3AF]'}`} />
@@ -555,31 +621,94 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Upload Zone */}
-              <div>
-                <h4 className="text-[11px] font-bold tracking-widest uppercase text-[#6B7280] mb-3">Upload File (PDF / EPUB)</h4>
-                <div 
-                  className={"border-2 border-dashed rounded-2xl p-10 flex flex-col items-center justify-center text-center cursor-pointer group transition-colors " + (isDragging ? (importCategory==='book'?'border-[#3D5A80] bg-[#3D5A80]/5':'border-[#E07A5F] bg-[#E07A5F]/5') : 'border-[#D1D5DB] hover:border-[#9CA3AF] bg-[#FAF9F6]')} 
-                  onClick={() => fileInputRef.current?.click()} 
-                  onDragOver={handleDragOver} 
-                  onDragLeave={handleDragLeave} 
-                  onDrop={handleDrop}
-                >
-                  <input type="file" accept=".epub,.pdf" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
-                  {isExtracting ? (
-                    <>
-                      <Loader2 className="w-10 h-10 text-[#6B7280] animate-spin mb-4" />
-                      <p className="font-bold text-[#111827]">Processing Document...</p>
-                    </>
-                  ) : (
-                    <>
-                      <div className="w-14 h-14 bg-white rounded-full shadow-sm flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"><Upload className="w-6 h-6 text-[#9CA3AF]" /></div>
-                      <p className="font-bold text-[#111827] mb-1">Click or Drag & Drop</p>
-                      <p className="text-xs text-[#6B7280]">Supports .epub and .pdf formats</p>
-                    </>
-                  )}
+              {/* If Article, show Method Toggle */}
+              {importCategory === 'article' && (
+                <div className="flex gap-2 bg-[#F3F4F6] p-1.5 rounded-2xl">
+                  <button
+                    type="button"
+                    onClick={() => setImportMethod('file')}
+                    className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${importMethod === 'file' ? 'bg-white text-[#111827] shadow-sm' : 'text-[#6B7280] hover:text-[#111827]'}`}
+                  >
+                    <Upload className="w-4 h-4" /> Upload Document (.pdf / .epub)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setImportMethod('text')}
+                    className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${importMethod === 'text' ? 'bg-white text-[#E07A5F] shadow-sm' : 'text-[#6B7280] hover:text-[#111827]'}`}
+                  >
+                    <FileText className="w-4 h-4" /> Paste Text (复制粘贴)
+                  </button>
                 </div>
-              </div>
+              )}
+
+              {/* Method 1: File Upload */}
+              {importMethod === 'file' ? (
+                <div>
+                  <h4 className="text-[11px] font-bold tracking-widest uppercase text-[#6B7280] mb-3">Upload File (PDF / EPUB)</h4>
+                  <div 
+                    className={"border-2 border-dashed rounded-2xl p-10 flex flex-col items-center justify-center text-center cursor-pointer group transition-colors " + (isDragging ? (importCategory==='book'?'border-[#3D5A80] bg-[#3D5A80]/5':'border-[#E07A5F] bg-[#E07A5F]/5') : 'border-[#D1D5DB] hover:border-[#9CA3AF] bg-[#FAF9F6]')} 
+                    onClick={() => fileInputRef.current?.click()} 
+                    onDragOver={handleDragOver} 
+                    onDragLeave={handleDragLeave} 
+                    onDrop={handleDrop}
+                  >
+                    <input type="file" accept=".epub,.pdf" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
+                    {isExtracting ? (
+                      <>
+                        <Loader2 className="w-10 h-10 text-[#6B7280] animate-spin mb-4" />
+                        <p className="font-bold text-[#111827]">Processing Document...</p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-14 h-14 bg-white rounded-full shadow-sm flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"><Upload className="w-6 h-6 text-[#9CA3AF]" /></div>
+                        <p className="font-bold text-[#111827] mb-1">Click or Drag & Drop</p>
+                        <p className="text-xs text-[#6B7280]">Supports .epub and .pdf formats</p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                /* Method 2: Paste Text */
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-[11px] font-bold tracking-widest uppercase text-[#6B7280] mb-2">Article Title (文章标题)</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. The Economist: The Future of AI (或留空自动提取)" 
+                      value={pastedTitle}
+                      onChange={(e) => setPastedTitle(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl border border-[#D1D5DB] focus:outline-none focus:ring-2 focus:ring-[#E07A5F] focus:border-transparent text-sm bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold tracking-widest uppercase text-[#6B7280] mb-2">Article Content (文章正文)</label>
+                    <textarea 
+                      rows={8}
+                      placeholder="Paste your English text or article here (直接粘贴文章正文)..."
+                      value={pastedText}
+                      onChange={(e) => setPastedText(e.target.value)}
+                      className="w-full px-4 py-3 rounded-xl border border-[#D1D5DB] focus:outline-none focus:ring-2 focus:ring-[#E07A5F] focus:border-transparent text-sm leading-relaxed bg-white"
+                    />
+                  </div>
+                  <button
+                    disabled={!pastedText.trim() || isExtracting}
+                    onClick={handlePasteSave}
+                    className="w-full py-3.5 bg-[#E07A5F] hover:bg-[#D0694E] disabled:opacity-50 text-white font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
+                  >
+                    {isExtracting ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Saving to Cloud...
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-5 h-5" />
+                        Save Article & Start Reading
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
 
             </div>
           </div>
