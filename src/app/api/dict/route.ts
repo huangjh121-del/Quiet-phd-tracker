@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import { GetObjectCommand } from '@aws-sdk/client-s3';
+import { r2 } from '@/lib/r2';
 import zlib from 'zlib';
 
 // In-memory cache for loaded prefix dictionaries
@@ -16,35 +17,10 @@ function getPrefix(word: string): string {
   return /^[a-z]{2}$/.test(p) ? p : clean[0];
 }
 
-const accessKeyId = 
-  process.env.R2_ACCESS_KEY_ID || 
-  process.env.CF_R2_KEY || 
-  process.env.R2_KEY || 
-  '2f88e2350f39fcf4e40b8be2d3cf7736';
-
-const secretAccessKey = 
-  process.env.R2_SECRET_ACCESS_KEY || 
-  process.env.CF_R2_SECRET || 
-  process.env.R2_SECRET || 
-  'afea63a2bd167df099ecf21b25b2c4bd04365a4daeb6a3b6e5b9ee987ac1c624';
-
-const endpoint = 
-  process.env.R2_ENDPOINT || 
-  process.env.R2_S3_ENDPOINT || 
-  'https://203c8e3689d03e222355fba43f13e51b.r2.cloudflarestorage.com';
-
 const bucketName = 
   process.env.R2_BUCKET_NAME || 
+  process.env.CF_R2_BUCKET || 
   'quiet-tracker-storage';
-
-const s3 = new S3Client({
-  region: 'auto',
-  endpoint,
-  credentials: {
-    accessKeyId,
-    secretAccessKey,
-  },
-});
 
 async function fetchShard(type: 'oald' | 'collocation', prefix: string): Promise<Record<string, string> | null> {
   const cache = type === 'oald' ? oaldCache : collocCache;
@@ -53,7 +29,7 @@ async function fetchShard(type: 'oald' | 'collocation', prefix: string): Promise
   }
 
   try {
-    const res = await s3.send(new GetObjectCommand({
+    const res = await r2.send(new GetObjectCommand({
       Bucket: bucketName,
       Key: `dict/${type}/${prefix}.json.gz`,
     }));
