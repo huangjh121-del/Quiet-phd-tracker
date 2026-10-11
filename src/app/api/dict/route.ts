@@ -1,50 +1,131 @@
 import { NextResponse } from 'next/server';
-import Database from 'better-sqlite3';
-import path from 'path';
+import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import zlib from 'zlib';
 
-// Tell Next.js we must run this on the Node.js runtime, not Edge, because better-sqlite3 uses native C++ bindings
+// In-memory cache for loaded prefix dictionaries
+const oaldCache = new Map<string, Record<string, string>>();
+const collocCache = new Map<string, Record<string, string>>();
+const MAX_CACHE = 120;
 
-let db: any = null;
+function getPrefix(word: string): string {
+  const clean = (word || '').toLowerCase().trim();
+  if (!clean) return '_other';
+  if (!/^[a-z]/.test(clean)) return '_other';
+  if (clean.length === 1) return clean;
+  const p = clean.slice(0, 2);
+  return /^[a-z]{2}$/.test(p) ? p : clean[0];
+}
 
-function getDb() {
-  if (!db) {
-    const dbPath = path.join(process.cwd(), 'quiet_dictionary.sqlite');
-    db = new Database(dbPath, { readonly: true });
+const accessKeyId = 
+  process.env.R2_ACCESS_KEY_ID || 
+  process.env.CF_R2_KEY || 
+  process.env.R2_KEY || 
+  '2f88e2350f39fcf4e40b8be2d3cf7736';
+
+const secretAccessKey = 
+  process.env.R2_SECRET_ACCESS_KEY || 
+  process.env.CF_R2_SECRET || 
+  process.env.R2_SECRET || 
+  'afea63a2bd167df099ecf21b25b2c4bd04365a4daeb6a3b6e5b9ee987ac1c624';
+
+const endpoint = 
+  process.env.R2_ENDPOINT || 
+  process.env.R2_S3_ENDPOINT || 
+  'https://203c8e3689d03e222355fba43f13e51b.r2.cloudflarestorage.com';
+
+const bucketName = 
+  process.env.R2_BUCKET_NAME || 
+  'quiet-tracker-storage';
+
+const s3 = new S3Client({
+  region: 'auto',
+  endpoint,
+  credentials: {
+    accessKeyId,
+    secretAccessKey,
+  },
+});
+
+async function fetchShard(type: 'oald' | 'collocation', prefix: string): Promise<Record<string, string> | null> {
+  const cache = type === 'oald' ? oaldCache : collocCache;
+  if (cache.has(prefix)) {
+    return cache.get(prefix)!;
   }
-  return db;
+
+  try {
+    const res = await s3.send(new GetObjectCommand({
+      Bucket: bucketName,
+      Key: `dict/${type}/${prefix}.json.gz`,
+    }));
+
+    if (!res.Body) return null;
+    const bytes = await res.Body.transformToByteArray();
+    const unzipped = zlib.gunzipSync(Buffer.from(bytes));
+    const map = JSON.parse(unzipped.toString('utf-8'));
+
+    if (cache.size >= MAX_CACHE) {
+      const firstKey = cache.keys().next().value;
+      if (firstKey) cache.delete(firstKey);
+    }
+    cache.set(prefix, map);
+    return map;
+  } catch (err: any) {
+    if (err.name !== 'NoSuchKey') {
+      console.warn(`[dict API] Error fetching ${type} shard for ${prefix}:`, err.message);
+    }
+    return null;
+  }
 }
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const word = searchParams.get('word');
+  const rawWord = searchParams.get('word');
 
-  if (!word) {
+  if (!rawWord) {
     return NextResponse.json({ error: 'Word is required' }, { status: 400 });
   }
 
+  const word = rawWord.trim().toLowerCase();
+  const prefix = getPrefix(word);
+
   try {
-    const database = getDb();
-    // Query OALD10 (case-insensitive)
-    const stmt = database.prepare("SELECT definition_html FROM dict_oald WHERE word COLLATE NOCASE = ? LIMIT 1");
-    let result = stmt.get(word);
+    // 1. Check Oxford Advanced Learner's Dictionary (OALD10)
+    let oaldMap = await fetchShard('oald', prefix);
+    let definitionHtml = oaldMap?.[word] || oaldMap?.[rawWord.trim()];
 
-    if (result && result.definition_html.startsWith('@@@LINK=')) {
-      const linkWord = result.definition_html.replace('@@@LINK=', '').trim();
-      result = stmt.get(linkWord);
+    // Handle OALD10 redirection links (e.g. @@@LINK=word)
+    if (definitionHtml && definitionHtml.startsWith('@@@LINK=')) {
+      const linkWord = definitionHtml.replace('@@@LINK=', '').trim().toLowerCase();
+      const linkPrefix = getPrefix(linkWord);
+      const linkMap = linkPrefix === prefix ? oaldMap : await fetchShard('oald', linkPrefix);
+      definitionHtml = linkMap?.[linkWord] || definitionHtml;
     }
 
-    if (result) {
-      // Fix relative paths in the original MDX HTML so they point to the Next.js public folder
-      let html = result.definition_html;
-      html = html.replace(/href="oald10\\.css"/g, 'href="/oald10.css"');
-      html = html.replace(/src="oald10\\.js"/g, 'src="/oald10.js"');
-      
-      return NextResponse.json({ html });
-    } else {
-      return NextResponse.json({ error: 'Not found in local dictionary' }, { status: 404 });
+    // 2. If not found in OALD, check Oxford Collocations
+    if (!definitionHtml) {
+      const collocMap = await fetchShard('collocation', prefix);
+      definitionHtml = collocMap?.[word] || collocMap?.[rawWord.trim()];
     }
-  } catch (error) {
-    console.error("Database error:", error);
-    return NextResponse.json({ error: 'Database query failed' }, { status: 500 });
+
+    if (definitionHtml) {
+      // Fix relative assets to public folder
+      let html = definitionHtml;
+      html = html.replace(/href="oald10\.css"/g, 'href="/oald10.css"');
+      html = html.replace(/src="oald10\.js"/g, 'src="/oald10.js"');
+
+      return NextResponse.json(
+        { html },
+        {
+          headers: {
+            'Cache-Control': 'public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400',
+          },
+        }
+      );
+    }
+
+    return NextResponse.json({ error: 'Not found in Oxford dictionary' }, { status: 404 });
+  } catch (error: any) {
+    console.error('[dict API] Lookup error:', error);
+    return NextResponse.json({ error: 'Dictionary lookup failed' }, { status: 500 });
   }
 }
