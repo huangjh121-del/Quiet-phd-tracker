@@ -48,9 +48,11 @@ export async function POST(req: Request) {
     // Convert interval (days) to ms and add to now
     const nextReviewAt = Date.now() + (newInterval * 24 * 60 * 60 * 1000);
     const tableName = type === 'word' ? 'saved_words' : 'saved_phrases';
+    const idColumn = type === 'word' ? 'word' : 'id';
+    const repColumn = type === 'word' ? 'repetition' : 'repetitions';
 
     const payload = {
-      sql: `UPDATE ${tableName} SET next_review_at = ?, interval = ?, ease_factor = ?, repetitions = ? WHERE id = ?`,
+      sql: `UPDATE ${tableName} SET next_review_at = ?, interval = ?, ease_factor = ?, ${repColumn} = ? WHERE ${idColumn} = ?`,
       params: [nextReviewAt, newInterval, newEaseFactor, newRepetitions, id]
     };
 

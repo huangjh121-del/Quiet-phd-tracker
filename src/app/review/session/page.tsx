@@ -38,11 +38,11 @@ function MainContent() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: currentItem.id,
+          id: currentItem.type === 'word' ? (currentItem.word || currentItem.id) : (currentItem.id || currentItem.phrase),
           type: currentItem.type,
           quality,
           currentEase: currentItem.ease_factor,
-          currentReps: currentItem.repetitions,
+          currentReps: currentItem.repetition ?? currentItem.repetitions ?? 0,
           currentInterval: currentItem.interval
         })
       });
