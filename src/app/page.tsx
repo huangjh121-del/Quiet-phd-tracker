@@ -45,7 +45,8 @@ export default function Home() {
       const words = wRes.items || [];
       const phrases = pRes.items || [];
       const sentences = sRes.sentences || [];
-      const now = Date.now();
+      const [now, setNow] = useState(0);
+  useEffect(() => setNow(Date.now()), []);
       setLibStats({
         words: words.length,
         phrases: phrases.length,

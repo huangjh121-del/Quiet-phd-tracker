@@ -1,11 +1,13 @@
 'use client';
 
+import { Suspense } from 'react';
+
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Loader2, PlayCircle, FileText } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
-export default function ReviewPage() {
+function MainContent() {
   const searchParams = useSearchParams();
   const reviewType = searchParams.get('type') || 'word';
   const [items, setItems] = useState<any[]>([]);
@@ -154,5 +156,14 @@ export default function ReviewPage() {
         )}
       </main>
     </div>
+  );
+}
+
+
+export default function Page() {
+  return (
+    <Suspense fallback={<div className="flex h-screen items-center justify-center text-gray-500">Loading...</div>}>
+      <MainContent />
+    </Suspense>
   );
 }

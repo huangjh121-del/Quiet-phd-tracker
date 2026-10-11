@@ -7,8 +7,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import localforage from 'localforage';
 import { ReactReader } from 'react-reader';
 import { Document, Page, pdfjs } from 'react-pdf';
-import 'react-pdf/dist/Page/TextLayer.css';
-import 'react-pdf/dist/Page/AnnotationLayer.css';
+// import 'react-pdf/dist/Page/TextLayer.css';
+// import 'react-pdf/dist/Page/AnnotationLayer.css';
 
 // Initialize PDF.js worker
 if (typeof window !== 'undefined') {

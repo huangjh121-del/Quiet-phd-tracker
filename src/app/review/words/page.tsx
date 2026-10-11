@@ -33,7 +33,8 @@ export default function WordsLibrary() {
     }
   };
 
-  const now = Date.now();
+  const [now, setNow] = useState(0);
+  useEffect(() => setNow(Date.now()), []);
   // New words are those with repetition = 0
   const newWords = items.filter(i => i.repetition === 0);
   // Due words are those that have been learned (repetition > 0) and their review time has arrived
