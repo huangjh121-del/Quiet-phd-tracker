@@ -1,20 +1,27 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const { userId } = await auth();
-    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
     const DB_ID = process.env.CLOUDFLARE_DATABASE_ID;
     const TOKEN = process.env.CLOUDFLARE_D1_TOKEN;
 
     if (!ACCOUNT_ID || !DB_ID || !TOKEN) {
-      return NextResponse.json({ error: 'Config missing' }, { status: 500 });
+      return NextResponse.json({ error: 'Config missing', sentences: [] }, { status: 500 });
     }
 
-    const payload = { sql: "SELECT * FROM saved_sentences WHERE user_id = ? ORDER BY saved_at DESC" };
+    const payload = userId 
+      ? { 
+          sql: "SELECT * FROM saved_sentences WHERE user_id = ? OR user_id = 'public' ORDER BY saved_at DESC",
+          params: [userId]
+        }
+      : { 
+          sql: "SELECT * FROM saved_sentences WHERE user_id = 'public' ORDER BY saved_at DESC",
+          params: []
+        };
 
     const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/d1/database/${DB_ID}/query`, {
       method: 'POST',
@@ -26,10 +33,14 @@ export async function GET() {
     });
 
     const data = await res.json();
-    if (!data.success) throw new Error('D1 error');
+    if (!data.success) {
+      console.error("D1 query error in /api/sentences:", data.errors);
+      throw new Error(data.errors?.[0]?.message || 'D1 error');
+    }
     
-    return NextResponse.json({ sentences: data.result[0].results || [] });
+    return NextResponse.json({ sentences: data.result[0]?.results || [] });
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error("Error in /api/sentences:", err);
+    return NextResponse.json({ error: err.message, sentences: [] }, { status: 500 });
   }
 }

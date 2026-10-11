@@ -231,19 +231,18 @@ export default function Reader() {
   
   useEffect(() => {
     if (fileType === 'text' && highlightText && fileData) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         const el = document.getElementById('highlight-target');
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          // Temporarily remove animate-pulse after a few seconds so it doesn't blink forever
-          setTimeout(() => el.classList.remove('animate-pulse'), 3000);
         }
-      }, 300); // give it a moment to render
+      }, 500);
+      return () => clearTimeout(timer);
     }
   }, [fileType, highlightText, fileData]);
 
   useEffect(() => {
-    if (fileType === 'text' && fileData && typeof fileData === 'string') {
+    if (!highlightText && fileType === 'text' && fileData && typeof fileData === 'string') {
       localforage.getItem<any[]>('quiet_library').then(lib => {
         if (lib && bookId) {
           const bookInfo = lib.find(b => b.id === bookId);
@@ -259,7 +258,7 @@ export default function Reader() {
         }
       });
     }
-  }, [fileData, fileType, bookId]);
+  }, [fileData, fileType, bookId, highlightText]);
 
   
   const markAsCompleted = async () => {
@@ -487,18 +486,33 @@ export default function Reader() {
 
   
   const renderHighlightedText = (text: string, highlight: string | null) => {
-    if (!highlight) return text;
-    // Simple case-insensitive exact substring split
-    const parts = text.split(highlight);
-    if (parts.length === 1) return text;
-    
-    return parts.reduce((prev: any, current: string, i: number) => {
-      if (i === 0) return [current];
-      return prev.concat(
-        <mark key={i} id="highlight-target" className="bg-[#E07A5F]/40 text-inherit rounded-md px-1.5 py-0.5 shadow-sm transition-all animate-pulse">{highlight}</mark>,
-        current
-      );
-    }, [] as any[]);
+    if (!highlight || !text) return text;
+    const target = highlight.trim();
+    if (!target) return text;
+
+    try {
+      const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+      const regex = new RegExp(`(${escaped})`, 'i');
+      const parts = text.split(regex);
+      if (parts.length <= 1) return text;
+
+      return parts.map((part, i) => {
+        if (i % 2 === 1) {
+          return (
+            <mark 
+              key={i} 
+              id={i === 1 ? "highlight-target" : undefined}
+              className="bg-[#FEF08A] text-[#111827] rounded-md px-1 py-0.5 shadow-sm border border-[#FACC15] ring-2 ring-[#FDE047]/60"
+            >
+              {part}
+            </mark>
+          );
+        }
+        return part;
+      });
+    } catch {
+      return text;
+    }
   };
 
   const handleSaveWord = async () => {
@@ -632,7 +646,10 @@ export default function Reader() {
       <header className="h-20 border-b border-[#E5E5E5] flex items-center justify-between px-8 bg-[#FAF9F6]/90 backdrop-blur-md shrink-0 z-10 shadow-sm">
         <div className="flex items-center gap-6">
           <button onClick={() => {
-            if (window.history.length > 2) {
+            const from = searchParamsHook.get('from');
+            if (from === 'sentences') {
+              router.push('/sentences');
+            } else if (window.history.length > 2) {
               router.back();
             } else {
               router.push('/');
@@ -941,13 +958,24 @@ export default function Reader() {
           <button 
             onClick={async () => {
               try {
-                await fetch('/api/save-sentence', {
+                const res = await fetch('/api/save-sentence', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ sentence: selectionMenu.context, sourceTitle: bookTitle })
+                  body: JSON.stringify({ 
+                    sentence: selectionMenu.context, 
+                    sourceTitle: bookTitle,
+                    bookId: bookId 
+                  })
                 });
-                showToast('Saved to Sentences Library!');
-              } catch(e) {}
+                const data = await res.json();
+                if (res.ok && data.success) {
+                  showToast('Saved to Sentences Library!');
+                } else {
+                  showToast(data.error || 'Failed to save sentence');
+                }
+              } catch(e) {
+                showToast('Failed to save sentence');
+              }
               setSelectionMenu(null);
               window.getSelection()?.removeAllRanges();
             }}
