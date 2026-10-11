@@ -89,14 +89,7 @@ export async function GET(request: Request) {
       html = html.replace(/href="oald10\.css"/g, 'href="/oald10.css"');
       html = html.replace(/src="oald10\.js"/g, 'src="/oald10.js"');
 
-      return NextResponse.json(
-        { html },
-        {
-          headers: {
-            'Cache-Control': 'public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400',
-          },
-        }
-      );
+      return NextResponse.json({ html });
     }
 
     return NextResponse.json({ error: 'Not found in Oxford dictionary' }, { status: 404 });
