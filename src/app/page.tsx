@@ -115,7 +115,7 @@ export default function Home() {
           id: d.id,
           title: d.title,
           author: d.author || 'Imported Document',
-          type: (d.file_name && d.file_name.toLowerCase().endsWith('.epub')) ? 'epub' : 'pdf',
+          type: (d.file_name && d.file_name.toLowerCase().endsWith('.epub')) ? 'epub' : ((d.type === 'article' || d.content) ? 'text' : 'pdf'),
           category: d.type === 'book' ? 'book' : 'article',
           lastReadAt: d.last_read_at || Date.now(),
           progress: d.percentage || 0,
@@ -132,6 +132,57 @@ export default function Home() {
         category: b.category || (b.type === 'epub' ? 'book' : 'article'),
         author: b.author || 'Imported Document'
       }));
+
+      // 3. Auto-sync any local-only documents to Cloudflare D1
+      for (const localDoc of migratedLocal) {
+        const alreadyInCloud = cloudDocs.some(cd => cd.id === localDoc.id || cd.title === localDoc.title);
+        if (!alreadyInCloud) {
+          try {
+            let content = '';
+            if (localDoc.type === 'text') {
+              const fileBlob = await localforage.getItem(`quiet_book_${localDoc.id}`);
+              if (fileBlob instanceof Blob) {
+                content = await fileBlob.text();
+              } else if (typeof fileBlob === 'string') {
+                content = fileBlob;
+              }
+            }
+            const syncRes = await fetch('/api/documents', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                id: localDoc.id,
+                type: localDoc.category || 'article',
+                title: localDoc.title,
+                author: localDoc.author || 'Pasted Text',
+                fileName: `${localDoc.title.slice(0, 20)}.txt`,
+                fileKey: '',
+                content: content,
+                totalProgress: String(localDoc.totalSize || 0)
+              })
+            });
+            if (syncRes.ok) {
+              const syncData = await syncRes.json();
+              if (syncData.document) {
+                cloudDocs.push({
+                  id: syncData.document.id,
+                  title: syncData.document.title,
+                  author: localDoc.author || 'Pasted Text',
+                  type: 'text',
+                  category: (syncData.document.type || 'article') as 'book' | 'article',
+                  lastReadAt: localDoc.lastReadAt || Date.now(),
+                  progress: localDoc.progress || 0,
+                  isCompleted: localDoc.isCompleted || false,
+                  currentLocation: localDoc.currentLocation || 0,
+                  totalSize: localDoc.totalSize || 0
+                });
+              }
+            }
+          } catch (syncErr) {
+            console.warn("Auto sync local doc to cloud failed:", syncErr);
+          }
+        }
+      }
 
       // Merge (prefer cloud)
       const map = new Map<string, BookMetadata>();
@@ -248,6 +299,7 @@ export default function Home() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
+            id: docId,
             type: 'article',
             title: title,
             author: 'Pasted Text',
@@ -261,6 +313,8 @@ export default function Home() {
           if (cloudData.document?.id) {
             docId = cloudData.document.id;
           }
+        } else {
+          console.warn("Cloud save non-ok response:", await cloudRes.text());
         }
       } catch (cloudErr) {
         console.warn("Cloud save failed, falling back to local:", cloudErr);

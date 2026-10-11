@@ -58,19 +58,25 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { id, type, title, author, fileName, fileKey, content, totalProgress } = body;
+    let { id, type, title, author, fileName, fileKey, content, totalProgress } = body;
 
-    if (!id || !type || !title) {
+    if (!type || !title) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
+    const docId = id || Date.now().toString();
     const now = Date.now();
     const sql = `
       INSERT INTO documents (id, user_id, type, title, author, file_name, file_key, content, reading_progress, total_progress, percentage, created_at, last_read_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        title = excluded.title,
+        author = excluded.author,
+        content = CASE WHEN excluded.content != '' THEN excluded.content ELSE documents.content END,
+        last_read_at = excluded.last_read_at
     `;
     const params = [
-      id,
+      docId,
       userId,
       type,
       title,
@@ -86,7 +92,7 @@ export async function POST(req: Request) {
     ];
 
     await queryD1(sql, params);
-    return NextResponse.json({ success: true, id });
+    return NextResponse.json({ success: true, id: docId, document: { id: docId, type, title, content } });
   } catch (error: any) {
     console.error('Create document error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

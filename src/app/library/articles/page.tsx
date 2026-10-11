@@ -38,6 +38,50 @@ export default function ArticleShelf() {
             lastReadAt: b.lastReadAt || 0,
           }));
 
+        // 3. Auto-sync any local-only articles to Cloudflare D1
+        for (const localArt of localArticles) {
+          const alreadyInCloud = cloudArticles.some(ca => ca.id === localArt.id || ca.title === localArt.title);
+          if (!alreadyInCloud) {
+            try {
+              let content = '';
+              const fileBlob = await localforage.getItem(`quiet_book_${localArt.id}`);
+              if (fileBlob instanceof Blob) {
+                content = await fileBlob.text();
+              } else if (typeof fileBlob === 'string') {
+                content = fileBlob;
+              }
+              const syncRes = await fetch('/api/documents', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  id: localArt.id,
+                  type: 'article',
+                  title: localArt.title,
+                  author: 'Pasted Text',
+                  fileName: `${localArt.title.slice(0, 20)}.txt`,
+                  fileKey: '',
+                  content: content,
+                  totalProgress: ''
+                })
+              });
+              if (syncRes.ok) {
+                const syncData = await syncRes.json();
+                if (syncData.document) {
+                  cloudArticles.push({
+                    id: syncData.document.id,
+                    title: syncData.document.title,
+                    progress: localArt.progress || 0,
+                    isCompleted: localArt.isCompleted || false,
+                    lastReadAt: localArt.lastReadAt || Date.now()
+                  });
+                }
+              }
+            } catch(e) {
+              console.warn("Auto sync article error:", e);
+            }
+          }
+        }
+
         // Merge
         const map = new Map();
         localArticles.forEach(a => map.set(a.id, a));

@@ -175,6 +175,7 @@ export default function Reader() {
                 setBookTitle(bookInfo.title);
                 setIsCompleted(bookInfo.isCompleted);
                 setFileType('text');
+                localforage.setItem(`quiet_book_${id}`, document.content).catch(() => {});
                 return;
               }
 
