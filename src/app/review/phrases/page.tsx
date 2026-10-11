@@ -22,14 +22,20 @@ export default function WordsLibrary() {
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this phrase?')) return;
     try {
-      await fetch('/api/delete-item', {
+      const res = await fetch('/api/delete-item', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'phrase', id })
       });
-      setItems(items.filter(i => i.id !== id));
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setItems(items.filter(i => i.id !== id));
+      } else {
+        alert(data.error || 'Failed to delete phrase');
+      }
     } catch (err) {
       console.error(err);
+      alert('Network error while deleting phrase');
     }
   };
 

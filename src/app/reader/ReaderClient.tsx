@@ -103,14 +103,18 @@ export default function Reader() {
     const text = selection.toString().trim();
     if (!text || text.length < 2) return;
 
-    // Try to get surrounding sentence context
+    // Try to get surrounding sentence context within the current line / paragraph
     let context = text;
     try {
       const node = selection.anchorNode;
       if (node && node.textContent) {
         const fullText = node.textContent;
-        // Simple sentence boundary detection
-        const sentences = fullText.match(/[^.!?]+[.!?]+/g) || [fullText];
+        // 1. Isolate to current line/paragraph (never cross newlines)
+        const lines = fullText.split(/[\r\n]+/);
+        const lineWithSelection = lines.find(l => l.includes(text)) || fullText;
+
+        // 2. Extract sentence within this line
+        const sentences = lineWithSelection.match(/[^.!?]+[.!?]*/g) || [lineWithSelection];
         const match = sentences.find(s => s.includes(text));
         if (match) context = match.trim();
       }
@@ -940,13 +944,26 @@ export default function Reader() {
           <button 
             onClick={async () => {
               try {
-                await fetch('/api/save-phrase', {
+                const res = await fetch('/api/save-phrase', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ phrase: selectionMenu.text, context: selectionMenu.context, sourceTitle: bookTitle })
+                  body: JSON.stringify({ 
+                    phrase: selectionMenu.text, 
+                    context: selectionMenu.context, 
+                    sourceTitle: bookTitle 
+                  })
                 });
-                showToast('Saved to Good Expressions!');
-              } catch(e) {}
+                const data = await res.json();
+                if (data.message === 'already_saved') {
+                  showToast('Phrase already in library!');
+                } else if (res.ok && data.success) {
+                  showToast('Saved to Good Expressions!');
+                } else {
+                  showToast(data.error || 'Failed to save phrase');
+                }
+              } catch(e) {
+                showToast('Failed to save phrase');
+              }
               setSelectionMenu(null);
               window.getSelection()?.removeAllRanges();
             }}
@@ -958,17 +975,26 @@ export default function Reader() {
           <button 
             onClick={async () => {
               try {
+                // If user selected multiple words (>= 4 words or ends with punctuation), use their exact selection!
+                const sentenceToSave = (
+                  selectionMenu.text.split(/\s+/).length >= 4 || 
+                  /[.!?]$/.test(selectionMenu.text) || 
+                  selectionMenu.text.length > 20
+                ) ? selectionMenu.text : (selectionMenu.context || selectionMenu.text);
+
                 const res = await fetch('/api/save-sentence', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ 
-                    sentence: selectionMenu.context, 
+                    sentence: sentenceToSave.trim(), 
                     sourceTitle: bookTitle,
                     bookId: bookId 
                   })
                 });
                 const data = await res.json();
-                if (res.ok && data.success) {
+                if (data.message === 'already_saved') {
+                  showToast('Sentence already in library!');
+                } else if (res.ok && data.success) {
                   showToast('Saved to Sentences Library!');
                 } else {
                   showToast(data.error || 'Failed to save sentence');

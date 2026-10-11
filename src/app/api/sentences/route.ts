@@ -38,7 +38,16 @@ export async function GET(req: Request) {
       throw new Error(data.errors?.[0]?.message || 'D1 error');
     }
     
-    return NextResponse.json({ sentences: data.result[0]?.results || [] });
+    const rawResults = data.result[0]?.results || [];
+    const seen = new Set<string>();
+    const uniqueSentences = rawResults.filter((s: any) => {
+      const key = (s.sentence || '').trim().toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    return NextResponse.json({ sentences: uniqueSentences });
   } catch (err: any) {
     console.error("Error in /api/sentences:", err);
     return NextResponse.json({ error: err.message, sentences: [] }, { status: 500 });

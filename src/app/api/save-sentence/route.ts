@@ -18,12 +18,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Config missing' }, { status: 500 });
     }
 
+    const cleanSentence = sentence.trim();
+
+    // Check for duplicates first (case-insensitive & whitespace trimmed)
+    const checkPayload = {
+      sql: "SELECT id FROM saved_sentences WHERE LOWER(TRIM(sentence)) = LOWER(TRIM(?)) AND (user_id = ? OR user_id = 'public') LIMIT 1",
+      params: [cleanSentence, uid]
+    };
+    const checkRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/d1/database/${DB_ID}/query`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(checkPayload)
+    });
+    const checkData = await checkRes.json();
+    if (checkData.success && checkData.result[0]?.results?.length > 0) {
+      return NextResponse.json({ success: true, message: 'already_saved', id: checkData.result[0].results[0].id });
+    }
+
     const id = crypto.randomUUID();
     const now = Date.now();
     
     const payload = {
       sql: "INSERT INTO saved_sentences (id, sentence, source_title, book_id, saved_at, user_id) VALUES (?, ?, ?, ?, ?, ?)",
-      params: [id, sentence.trim(), sourceTitle || 'Unknown', bookId || null, now, uid]
+      params: [id, cleanSentence, sourceTitle || 'Unknown', bookId || null, now, uid]
     };
 
     const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/d1/database/${DB_ID}/query`, {

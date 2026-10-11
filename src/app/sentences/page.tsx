@@ -15,7 +15,16 @@ export default function SentencesPage() {
     fetch('/api/sentences?t=' + Date.now())
       .then(res => res.json())
       .then(data => {
-        if (data.sentences) setSentences(data.sentences);
+        if (data.sentences) {
+          const seen = new Set<string>();
+          const unique = data.sentences.filter((s: any) => {
+            const key = (s.sentence || '').trim().toLowerCase();
+            if (!key || seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+          setSentences(unique);
+        }
         setIsLoading(false);
       })
       .catch(err => {
@@ -74,14 +83,20 @@ export default function SentencesPage() {
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this sentence?')) return;
     try {
-      await fetch('/api/delete-item', {
+      const res = await fetch('/api/delete-item', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type: 'sentence', id })
       });
-      setSentences(sentences.filter(i => i.id !== id));
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSentences(prev => prev.filter(i => i.id !== id));
+      } else {
+        alert(data.error || 'Failed to delete sentence');
+      }
     } catch (err) {
       console.error(err);
+      alert('Network error while deleting sentence');
     }
   };
 

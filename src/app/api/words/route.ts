@@ -28,8 +28,16 @@ export async function GET() {
 
     // Combine and sort by how overdue they are
     const combined = [...words, ...phrases].sort((a, b) => a.next_review_at - b.next_review_at);
+    const seen = new Set<string>();
+    const uniqueCombined = combined.filter((item: any) => {
+      const text = item.type === 'word' ? (item.word || '') : (item.phrase || '');
+      const key = `${item.type}:${text.trim().toLowerCase()}`;
+      if (!text || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 
-    return NextResponse.json({ items: combined });
+    return NextResponse.json({ items: uniqueCombined });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
