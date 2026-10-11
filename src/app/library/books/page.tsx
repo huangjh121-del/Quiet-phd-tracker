@@ -10,12 +10,51 @@ export default function BookShelf() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    localforage.getItem<any[]>('quiet_library').then(lib => {
-      if (lib) {
-        setBooks(lib.filter(b => b.category === 'book').sort((a, b) => b.lastReadAt - a.lastReadAt));
+    async function loadBooks() {
+      try {
+        // 1. Fetch cloud documents
+        const res = await fetch('/api/documents?type=book&t=' + Date.now());
+        const data = await res.json();
+        let cloudBooks: any[] = [];
+        if (data.documents) {
+          cloudBooks = data.documents.map((d: any) => ({
+            id: d.id,
+            title: d.title,
+            author: d.author,
+            progress: d.percentage || 0,
+            isCompleted: (d.percentage || 0) >= 100,
+            lastReadAt: d.last_read_at || 0,
+          }));
+        }
+
+        // 2. Fetch local books fallback
+        const localLib = await localforage.getItem<any[]>('quiet_library') || [];
+        const localBooks = localLib
+          .filter(b => b.category === 'book')
+          .map(b => ({
+            id: b.id,
+            title: b.title,
+            author: b.author,
+            progress: b.progress || 0,
+            isCompleted: b.isCompleted || false,
+            lastReadAt: b.lastReadAt || 0,
+          }));
+
+        // Merge (prefer cloud book if ID matches)
+        const map = new Map();
+        localBooks.forEach(b => map.set(b.id, b));
+        cloudBooks.forEach(b => map.set(b.id, b));
+
+        const combined = Array.from(map.values()).sort((a, b) => b.lastReadAt - a.lastReadAt);
+        setBooks(combined);
+      } catch (err) {
+        console.error("Error loading books:", err);
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
-    });
+    }
+
+    loadBooks();
   }, []);
 
   return (

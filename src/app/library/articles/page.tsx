@@ -10,12 +10,49 @@ export default function ArticleShelf() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    localforage.getItem<any[]>('quiet_library').then(lib => {
-      if (lib) {
-        setArticles(lib.filter(b => b.category === 'article').sort((a, b) => b.lastReadAt - a.lastReadAt));
+    async function loadArticles() {
+      try {
+        // 1. Fetch cloud documents
+        const res = await fetch('/api/documents?type=article&t=' + Date.now());
+        const data = await res.json();
+        let cloudArticles: any[] = [];
+        if (data.documents) {
+          cloudArticles = data.documents.map((d: any) => ({
+            id: d.id,
+            title: d.title,
+            progress: d.percentage || 0,
+            isCompleted: (d.percentage || 0) >= 100,
+            lastReadAt: d.last_read_at || 0,
+          }));
+        }
+
+        // 2. Fetch local articles fallback
+        const localLib = await localforage.getItem<any[]>('quiet_library') || [];
+        const localArticles = localLib
+          .filter(b => b.category === 'article')
+          .map(b => ({
+            id: b.id,
+            title: b.title,
+            progress: b.progress || 0,
+            isCompleted: b.isCompleted || false,
+            lastReadAt: b.lastReadAt || 0,
+          }));
+
+        // Merge
+        const map = new Map();
+        localArticles.forEach(a => map.set(a.id, a));
+        cloudArticles.forEach(a => map.set(a.id, a));
+
+        const combined = Array.from(map.values()).sort((a, b) => b.lastReadAt - a.lastReadAt);
+        setArticles(combined);
+      } catch (err) {
+        console.error("Error loading articles:", err);
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
-    });
+    }
+
+    loadArticles();
   }, []);
 
   return (
@@ -41,7 +78,7 @@ export default function ArticleShelf() {
                 </div>
                 <h3 className="font-serif font-bold text-lg leading-tight text-[#111827] line-clamp-3 mb-2">{article.title}</h3>
                 <div className="mt-auto pt-4 flex justify-between items-center text-xs font-bold text-[#6B7280]">
-                  <span>{new Date(article.lastReadAt).toLocaleDateString()}</span>
+                  <span>{article.lastReadAt ? new Date(article.lastReadAt).toLocaleDateString() : 'Recent'}</span>
                   
                   {article.isCompleted ? (
                     <span className="bg-[#5B8266]/10 text-[#5B8266] px-2 py-1 rounded-md uppercase tracking-widest">Completed</span>

@@ -103,15 +103,42 @@ export default function Home() {
   }, []);
 
   const loadLibrary = async () => {
-    const lib = await localforage.getItem<BookMetadata[]>('quiet_library');
-    if (lib) {
-      // Ensure older items have a category
-      const migratedLib = lib.map(b => ({
+    try {
+      // 1. Cloud documents
+      const res = await fetch('/api/documents?t=' + Date.now());
+      const data = await res.json();
+      let cloudDocs: BookMetadata[] = [];
+      if (data.documents) {
+        cloudDocs = data.documents.map((d: any) => ({
+          id: d.id,
+          title: d.title,
+          author: d.author || 'Imported Document',
+          type: (d.file_name && d.file_name.toLowerCase().endsWith('.epub')) ? 'epub' : 'pdf',
+          category: d.type === 'book' ? 'book' : 'article',
+          lastReadAt: d.last_read_at || Date.now(),
+          progress: d.percentage || 0,
+          isCompleted: (d.percentage || 0) >= 100,
+          currentLocation: d.reading_progress || ((d.file_name && d.file_name.toLowerCase().endsWith('.epub')) ? 0 : 1),
+          totalSize: Number(d.total_progress) || 0
+        }));
+      }
+
+      // 2. Local fallback
+      const localLib = await localforage.getItem<BookMetadata[]>('quiet_library') || [];
+      const migratedLocal = localLib.map(b => ({
         ...b,
         category: b.category || (b.type === 'epub' ? 'book' : 'article'),
-        author: b.author || 'Unknown Author'
+        author: b.author || 'Imported Document'
       }));
-      setLibrary(migratedLib.sort((a, b) => b.lastReadAt - a.lastReadAt));
+
+      // Merge (prefer cloud)
+      const map = new Map<string, BookMetadata>();
+      migratedLocal.forEach(b => map.set(b.id, b));
+      cloudDocs.forEach(b => map.set(b.id, b));
+
+      setLibrary(Array.from(map.values()).sort((a, b) => b.lastReadAt - a.lastReadAt));
+    } catch (e) {
+      console.error("Failed to load library:", e);
     }
   };
 
@@ -130,10 +157,54 @@ export default function Home() {
     try {
       const id = Date.now().toString();
       const title = file.name.replace(/\.[^/.]+$/, "");
+      const contentType = file.type || (isPdf ? 'application/pdf' : 'application/epub+zip');
+
+      // 1. Get presigned upload URL for R2
+      let fileKey = '';
+      try {
+        const urlRes = await fetch('/api/documents/upload-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileName: file.name, contentType })
+        });
+        const urlData = await urlRes.json();
+        if (urlData.uploadUrl) {
+          fileKey = urlData.fileKey;
+          // Direct PUT to R2
+          await fetch(urlData.uploadUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': contentType },
+            body: file
+          });
+        }
+      } catch (uploadErr) {
+        console.warn("Cloud upload warning, proceeding with local fallback:", uploadErr);
+      }
+
+      // 2. Save document metadata to D1
+      try {
+        await fetch('/api/documents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id,
+            type: importCategory,
+            title,
+            author: 'Imported Document',
+            fileName: file.name,
+            fileKey,
+            totalProgress: ''
+          })
+        });
+      } catch (d1Err) {
+        console.warn("D1 metadata save warning:", d1Err);
+      }
+
+      // 3. Cache locally in localforage for instant zero-latency loading
       const newBook: BookMetadata = {
         id,
         title,
-        author: "Imported Document", // We can't parse PDF authors purely client-side easily without heavy libraries, so we use a placeholder
+        author: "Imported Document",
         type: isPdf ? 'pdf' : 'epub',
         category: importCategory,
         lastReadAt: Date.now(),
@@ -144,14 +215,13 @@ export default function Home() {
 
       const currentLib = await localforage.getItem<BookMetadata[]>('quiet_library') || [];
       currentLib.push(newBook);
-      
       await localforage.setItem('quiet_library', currentLib);
       await localforage.setItem(`quiet_book_${id}`, file);
       
       router.push(`/reader?id=${id}`);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error saving file:", err);
-      alert("Could not read this file.");
+      alert("Could not process this file: " + (err.message || 'Unknown error'));
     } finally {
       setIsExtracting(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -176,6 +246,11 @@ export default function Home() {
     e.preventDefault();
     e.stopPropagation();
     if (confirm("Remove this document from library?")) {
+      try {
+        await fetch(`/api/documents/${id}`, { method: 'DELETE' });
+      } catch (e) {
+        console.error("Failed to delete document from cloud:", e);
+      }
       const currentLib = library.filter(b => b.id !== id);
       await localforage.setItem('quiet_library', currentLib);
       await localforage.removeItem(`quiet_book_${id}`);

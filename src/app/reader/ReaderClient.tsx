@@ -138,46 +138,91 @@ export default function Reader() {
     if (!id) return;
     setBookId(id);
 
-    localforage.getItem<any[]>('quiet_library').then(lib => {
-      if (lib) {
-        const bookInfo = lib.find(b => b.id === id);
-        if (bookInfo) {
-          setBookTitle(bookInfo.title);
-          setIsCompleted(bookInfo.isCompleted || false);
-          setFileType(bookInfo.type);
-          if (bookInfo.type === 'pdf') {
-            setPageNumber(Number(bookInfo.currentLocation) || 1);
-          } else {
-            setLocation(bookInfo.currentLocation || 0);
-          }
-        }
-      }
-    });
+    async function loadBookData() {
+      let bookInfo: any = null;
+      let blobOrBuffer: any = null;
 
-    localforage.getItem(`quiet_book_${id}`).then(async (blob: any) => {
-      if (!blob) {
-        console.error("No blob found in localforage");
-        return;
+      // 1. Try local cache first for instant speed
+      const localLib = await localforage.getItem<any[]>('quiet_library');
+      if (localLib) {
+        bookInfo = localLib.find(b => b.id === id);
       }
-      
-      try {
-        if (blob.type === 'text/plain') {
-          const text = typeof blob.text === 'function' ? await blob.text() : await new Response(blob).text();
-          setFileData(text);
-        } else {
-          const isPdf = blob.type === 'application/pdf' || (blob.name && blob.name.toLowerCase().endsWith('.pdf'));
-          if (isPdf) {
-            setFileData(blob);
-          } else {
-            const buffer = typeof blob.arrayBuffer === 'function' ? await blob.arrayBuffer() : await new Response(blob).arrayBuffer();
-            setFileData(buffer);
+      blobOrBuffer = await localforage.getItem(`quiet_book_${id}`);
+
+      // 2. Fetch from Cloud API (D1 & R2)
+      if (!bookInfo || !blobOrBuffer) {
+        try {
+          const docRes = await fetch(`/api/documents/${id}`);
+          if (docRes.ok) {
+            const { document } = await docRes.json();
+            if (document) {
+              const isEpub = (document.file_name && document.file_name.toLowerCase().endsWith('.epub'));
+              const isTxt = document.type === 'article' && Boolean(document.content);
+              bookInfo = {
+                title: document.title,
+                isCompleted: (document.percentage || 0) >= 100,
+                type: isEpub ? 'epub' : (isTxt ? 'text' : 'pdf'),
+                currentLocation: document.reading_progress || (isEpub ? 0 : 1),
+              };
+
+              // If text article
+              if (document.content) {
+                setFileData(document.content);
+                setBookTitle(bookInfo.title);
+                setIsCompleted(bookInfo.isCompleted);
+                setFileType('text');
+                return;
+              }
+
+              // If cloud file in R2
+              if (document.file_key) {
+                const fileRes = await fetch(`/api/documents/${id}/file`);
+                if (fileRes.ok) {
+                  const blob = await fileRes.blob();
+                  await localforage.setItem(`quiet_book_${id}`, blob);
+                  blobOrBuffer = blob;
+                }
+              }
+            }
           }
+        } catch (cloudErr) {
+          console.warn("Cloud doc fetch error:", cloudErr);
         }
-      } catch (err) {
-        console.error("Failed to parse blob:", err);
-        setFileData(blob); // fallback
       }
-    });
+
+      if (bookInfo) {
+        setBookTitle(bookInfo.title);
+        setIsCompleted(bookInfo.isCompleted || false);
+        setFileType(bookInfo.type);
+        if (bookInfo.type === 'pdf') {
+          setPageNumber(Number(bookInfo.currentLocation) || 1);
+        } else {
+          setLocation(bookInfo.currentLocation || 0);
+        }
+      }
+
+      if (blobOrBuffer) {
+        try {
+          if (blobOrBuffer.type === 'text/plain') {
+            const text = typeof blobOrBuffer.text === 'function' ? await blobOrBuffer.text() : await new Response(blobOrBuffer).text();
+            setFileData(text);
+          } else {
+            const isPdf = blobOrBuffer.type === 'application/pdf' || (blobOrBuffer.name && blobOrBuffer.name.toLowerCase().endsWith('.pdf')) || (bookInfo && bookInfo.type === 'pdf');
+            if (isPdf) {
+              setFileData(blobOrBuffer);
+            } else {
+              const buffer = typeof blobOrBuffer.arrayBuffer === 'function' ? await blobOrBuffer.arrayBuffer() : await new Response(blobOrBuffer).arrayBuffer();
+              setFileData(buffer);
+            }
+          }
+        } catch (err) {
+          console.error("Failed to parse blob:", err);
+          setFileData(blobOrBuffer);
+        }
+      }
+    }
+
+    loadBookData();
   }, []);
 
   // Restore scroll position for text files when data is loaded
@@ -218,6 +263,13 @@ export default function Reader() {
   const markAsCompleted = async () => {
     if (!bookId) return;
     setIsCompleted(true);
+    // Cloud sync
+    fetch(`/api/documents/${bookId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ percentage: 100 })
+    }).catch(e => console.error("Cloud mark completed error:", e));
+
     const lib = await localforage.getItem<any[]>('quiet_library') || [];
     const idx = lib.findIndex(b => b.id === bookId);
     if (idx !== -1) {
@@ -230,6 +282,17 @@ export default function Reader() {
 
   const saveProgress = async (currentLoc: string | number, progressPercent: number, totalPages: number = 0) => {
     if (!bookId) return;
+    // Cloud sync
+    fetch(`/api/documents/${bookId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        readingProgress: String(currentLoc),
+        percentage: isCompleted ? 100 : progressPercent,
+        totalProgress: totalPages ? String(totalPages) : ''
+      })
+    }).catch(e => console.error("Cloud save progress error:", e));
+
     const lib = await localforage.getItem<any[]>('quiet_library') || [];
     const idx = lib.findIndex(b => b.id === bookId);
     if (idx !== -1) {
