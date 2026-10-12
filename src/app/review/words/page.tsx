@@ -3,8 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Loader2, PlayCircle, BookOpen, GraduationCap, Flame, Trash2 } from "lucide-react";
 import Link from 'next/link';
+import { useReadingTimer } from '@/lib/readingTracker';
 
 export default function WordsLibrary() {
+  useReadingTimer();
   const [items, setItems] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 

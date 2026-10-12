@@ -4,8 +4,10 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Loader2, Quote, BookOpen, Trash2, ArrowUpRight } from "lucide-react";
 import Link from 'next/link';
 import localforage from 'localforage';
+import { useReadingTimer } from '@/lib/readingTracker';
 
 export default function SentencesPage() {
+  useReadingTimer();
   const [sentences, setSentences] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [library, setLibrary] = useState<any[]>([]);

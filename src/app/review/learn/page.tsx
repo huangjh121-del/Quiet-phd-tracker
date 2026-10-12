@@ -4,8 +4,10 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { ArrowLeft, Loader2, CheckCircle2, ChevronRight, GraduationCap, PenLine, Check } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { useReadingTimer } from '@/lib/readingTracker';
 
 function LearnSessionInner() {
+  useReadingTimer();
   const searchParams = useSearchParams();
   const type = searchParams.get('type') || 'word';
   const [items, setItems] = useState<any[]>([]);

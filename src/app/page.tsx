@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useAuth, SignInButton, SignUpButton, Show, UserButton } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 import localforage from 'localforage';
+import { mergeStats, calculateStreak } from '@/lib/readingTracker';
 
 interface BookMetadata {
   id: string;
@@ -73,8 +74,30 @@ export default function Home() {
       }
     })();
 
-    // Fetch localforage stats
-    localforage.getItem<any>('quiet_reading_stats').then(stats => {
+    // Fetch localforage and cloud stats
+    (async () => {
+      let stats = await localforage.getItem<any>('quiet_reading_stats');
+      
+      if (isSignedIn) {
+        try {
+          const res = await fetch('/api/reading-stats?t=' + Date.now());
+          const data = await res.json();
+          if (data && data.stats) {
+            stats = mergeStats(stats, data.stats);
+            await localforage.setItem('quiet_reading_stats', stats);
+          } else if (stats) {
+            // Upload local stats to cloud if cloud is empty
+            fetch('/api/reading-stats', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ stats })
+            }).catch(() => {});
+          }
+        } catch (e) {
+          console.warn("Failed to sync cloud reading stats:", e);
+        }
+      }
+
       let days = [];
       const now = new Date();
       now.setHours(0,0,0,0);
@@ -82,9 +105,10 @@ export default function Home() {
 
       if (stats) {
         const todayStr = new Date().toDateString();
+        const streak = calculateStreak(stats);
         setReadingStats({
           todayMins: stats[todayStr] || 0,
-          streak: stats.streak || 1,
+          streak: streak,
           activeDays: stats.activeDays || [new Date().getDay()],
           history: stats
         });
@@ -115,7 +139,7 @@ export default function Home() {
          days.push(d.toDateString());
       }
       setDisplayDays(days);
-    });
+    })();
 
   }, [isLoaded, isSignedIn]);
 

@@ -6,8 +6,10 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Loader2, PlayCircle, FileText, PenLine, Check } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { useReadingTimer } from '@/lib/readingTracker';
 
 function MainContent() {
+  useReadingTimer();
   const searchParams = useSearchParams();
   const reviewType = searchParams.get('type') || 'word';
   const [items, setItems] = useState<any[]>([]);
