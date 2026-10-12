@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, FileText, Loader2 } from 'lucide-react';
+import { ArrowLeft, FileText, Loader2, Pencil, X } from 'lucide-react';
 import Link from 'next/link';
 import localforage from 'localforage';
 import { useAuth } from '@clerk/nextjs';
@@ -10,6 +10,43 @@ export default function ArticleShelf() {
   const { isLoaded, isSignedIn, getToken } = useAuth();
   const [articles, setArticles] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [editingArticle, setEditingArticle] = useState<any | null>(null);
+  const [editTitleInput, setEditTitleInput] = useState('');
+  const [isSavingTitle, setIsSavingTitle] = useState(false);
+
+  const handleSaveTitle = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!editingArticle || !editTitleInput.trim() || isSavingTitle) return;
+    setIsSavingTitle(true);
+    const trimmedTitle = editTitleInput.trim();
+
+    try {
+      let token: string | null = null;
+      try { token = await getToken(); } catch (e) {}
+      const patchHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) patchHeaders['Authorization'] = `Bearer ${token}`;
+
+      await fetch(`/api/documents/${editingArticle.id}`, {
+        method: 'PATCH',
+        headers: patchHeaders,
+        body: JSON.stringify({ title: trimmedTitle }),
+      });
+
+      const localLib = await localforage.getItem<any[]>('quiet_library') || [];
+      const updatedLib = localLib.map(item => 
+        item.id === editingArticle.id ? { ...item, title: trimmedTitle } : item
+      );
+      await localforage.setItem('quiet_library', updatedLib);
+
+      setArticles(prev => prev.map(a => a.id === editingArticle.id ? { ...a, title: trimmedTitle } : a));
+      setEditingArticle(null);
+    } catch (err) {
+      console.error('Failed to update title:', err);
+      alert('保存失败，请稍后重试');
+    } finally {
+      setIsSavingTitle(false);
+    }
+  };
 
   useEffect(() => {
     async function loadArticles() {
@@ -130,12 +167,31 @@ export default function ArticleShelf() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {articles.map((article) => (
-              <Link key={article.id} href={`/reader?id=${article.id}`} className="group relative bg-white p-6 rounded-2xl border border-[#E5E5E5] shadow-sm hover:shadow-xl transition-all hover:-translate-y-1 flex flex-col">
-                <div className="w-10 h-10 rounded-full bg-[#E07A5F]/10 flex items-center justify-center mb-4 text-[#E07A5F] group-hover:scale-110 transition-transform">
-                  <FileText className="w-5 h-5" />
+              <div key={article.id} className="group relative bg-white p-6 rounded-2xl border border-[#E5E5E5] shadow-sm hover:shadow-xl transition-all hover:-translate-y-1 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="w-10 h-10 rounded-full bg-[#E07A5F]/10 flex items-center justify-center text-[#E07A5F] group-hover:scale-110 transition-transform">
+                      <FileText className="w-5 h-5" />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setEditingArticle(article);
+                        setEditTitleInput(article.title);
+                      }}
+                      className="p-1.5 text-[#9CA3AF] hover:text-[#E07A5F] hover:bg-[#E07A5F]/10 rounded-lg transition-colors cursor-pointer"
+                      title="修改文章名 / Edit title"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <Link href={`/reader?id=${article.id}`} className="block">
+                    <h3 className="font-serif font-bold text-lg leading-tight text-[#111827] line-clamp-3 mb-2 hover:text-[#E07A5F] transition-colors">{article.title}</h3>
+                  </Link>
                 </div>
-                <h3 className="font-serif font-bold text-lg leading-tight text-[#111827] line-clamp-3 mb-2">{article.title}</h3>
-                <div className="mt-auto pt-4 flex justify-between items-center text-xs font-bold text-[#6B7280]">
+                <Link href={`/reader?id=${article.id}`} className="mt-auto pt-4 flex justify-between items-center text-xs font-bold text-[#6B7280]">
                   <span>{article.lastReadAt ? new Date(article.lastReadAt).toLocaleDateString() : 'Recent'}</span>
                   
                   {article.isCompleted ? (
@@ -145,13 +201,66 @@ export default function ArticleShelf() {
                   ) : (
                     <span className="bg-[#F3F4F6] px-2 py-1 rounded-md uppercase tracking-widest text-[#6B7280]">New</span>
                   )}
-
-                </div>
-              </Link>
+                </Link>
+              </div>
             ))}
           </div>
         )}
       </main>
+
+      {/* Edit Title Modal */}
+      {editingArticle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#111827]/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div 
+            className="bg-[#FAF9F6] border border-[#E5E5E5] rounded-3xl max-w-md w-full p-6 shadow-2xl relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-serif font-bold text-lg text-[#111827]">
+                修改文章标题
+              </h3>
+              <button 
+                onClick={() => setEditingArticle(null)} 
+                className="text-[#9CA3AF] hover:text-[#111827] p-1.5 rounded-full hover:bg-black/5 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveTitle}>
+              <label className="block text-xs font-bold uppercase tracking-wider text-[#6B7280] mb-2">
+                文章标题 (Article Title)
+              </label>
+              <input
+                type="text"
+                value={editTitleInput}
+                onChange={(e) => setEditTitleInput(e.target.value)}
+                autoFocus
+                className="w-full px-4 py-3 bg-white border border-[#E5E5E5] rounded-xl text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#3D5A80] focus:border-transparent mb-6 transition-all font-serif"
+                placeholder="请输入新文章标题..."
+              />
+
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingArticle(null)}
+                  className="px-4 py-2 text-sm font-medium text-[#6B7280] hover:text-[#111827] rounded-xl hover:bg-black/5 transition-colors cursor-pointer"
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingTitle || !editTitleInput.trim()}
+                  className="px-5 py-2 text-sm font-semibold text-white bg-[#111827] hover:bg-[#3D5A80] rounded-xl shadow-sm transition-all disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+                >
+                  {isSavingTitle && <Loader2 className="w-4 h-4 animate-spin" />}
+                  保存修改
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

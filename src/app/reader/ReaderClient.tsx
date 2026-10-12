@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, PlayCircle, Plus, Type, Check, Loader2, ChevronLeft, ChevronRight, Menu, List, X, AlertCircle, RefreshCw } from 'lucide-react';
+import { ArrowLeft, PlayCircle, Plus, Type, Check, Loader2, ChevronLeft, ChevronRight, Menu, List, X, AlertCircle, RefreshCw, Pencil } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import localforage from 'localforage';
@@ -77,8 +77,45 @@ export default function Reader() {
   const closeTimer = useRef<NodeJS.Timeout | null>(null);
   const renditionRef = useRef<any>(null);
 
-  
-  
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editTitleInput, setEditTitleInput] = useState('');
+  const [isSavingTitle, setIsSavingTitle] = useState(false);
+
+  const handleSaveTitle = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const currentId = bookId || searchParamsHook.get('id');
+    if (!currentId || !editTitleInput.trim() || isSavingTitle) return;
+    setIsSavingTitle(true);
+    const trimmedTitle = editTitleInput.trim();
+
+    try {
+      let token: string | null = null;
+      try { token = await getToken(); } catch (e) {}
+      const patchHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) patchHeaders['Authorization'] = `Bearer ${token}`;
+
+      await fetch(`/api/documents/${currentId}`, {
+        method: 'PATCH',
+        headers: patchHeaders,
+        body: JSON.stringify({ title: trimmedTitle }),
+      });
+
+      const currentLib = await localforage.getItem<any[]>('quiet_library') || [];
+      const updatedLib = currentLib.map(item => 
+        item.id === currentId ? { ...item, title: trimmedTitle } : item
+      );
+      await localforage.setItem('quiet_library', updatedLib);
+
+      setBookTitle(trimmedTitle);
+      setIsEditingTitle(false);
+    } catch (err) {
+      console.error('Failed to update title:', err);
+      alert('保存失败，请稍后重试');
+    } finally {
+      setIsSavingTitle(false);
+    }
+  };
+
   // Reading Time Tracker
   useReadingTimer();
 
@@ -750,9 +787,22 @@ export default function Reader() {
           </button>
           <div className="flex flex-col">
             <span className="text-[10px] font-bold tracking-widest uppercase text-[#6B7280]">Currently Reading</span>
-            <h1 className="font-serif font-medium text-sm text-[#111827]">
-              {bookTitle || (fileType === 'pdf' ? 'PDF Document' : 'EPUB Document')}
-            </h1>
+            <div className="flex items-center gap-2 group">
+              <h1 className="font-serif font-medium text-sm text-[#111827] max-w-xs md:max-w-md truncate">
+                {bookTitle || (fileType === 'pdf' ? 'PDF Document' : 'EPUB Document')}
+              </h1>
+              <button 
+                type="button"
+                onClick={() => {
+                  setEditTitleInput(bookTitle || '');
+                  setIsEditingTitle(true);
+                }}
+                className="opacity-60 hover:opacity-100 p-1 text-[#9CA3AF] hover:text-[#3D5A80] transition-opacity rounded hover:bg-black/5 cursor-pointer"
+                title="修改标题 / Edit title"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -1196,6 +1246,60 @@ export default function Reader() {
             </div>
           </div>
         </>
+      )}
+
+      {/* Edit Title Modal */}
+      {isEditingTitle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#111827]/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div 
+            className="bg-[#FAF9F6] border border-[#E5E5E5] rounded-3xl max-w-md w-full p-6 shadow-2xl relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-serif font-bold text-lg text-[#111827]">
+                修改标题
+              </h3>
+              <button 
+                onClick={() => setIsEditingTitle(false)} 
+                className="text-[#9CA3AF] hover:text-[#111827] p-1.5 rounded-full hover:bg-black/5 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveTitle}>
+              <label className="block text-xs font-bold uppercase tracking-wider text-[#6B7280] mb-2">
+                标题 (Title)
+              </label>
+              <input
+                type="text"
+                value={editTitleInput}
+                onChange={(e) => setEditTitleInput(e.target.value)}
+                autoFocus
+                className="w-full px-4 py-3 bg-white border border-[#E5E5E5] rounded-xl text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#3D5A80] focus:border-transparent mb-6 transition-all font-serif"
+                placeholder="请输入新标题..."
+              />
+
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsEditingTitle(false)}
+                  className="px-4 py-2 text-sm font-medium text-[#6B7280] hover:text-[#111827] rounded-xl hover:bg-black/5 transition-colors cursor-pointer"
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingTitle || !editTitleInput.trim()}
+                  className="px-5 py-2 text-sm font-semibold text-white bg-[#111827] hover:bg-[#3D5A80] rounded-xl shadow-sm transition-all disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+                >
+                  {isSavingTitle && <Loader2 className="w-4 h-4 animate-spin" />}
+                  保存修改
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

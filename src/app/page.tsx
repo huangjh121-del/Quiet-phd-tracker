@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { BookOpen, BookA, TextQuote, Quote, Target, Settings, Search, Clock, Plus, ChevronRight, Bookmark, X, Upload, Loader2, Flame, CheckCircle2, FileText, Book } from 'lucide-react';
+import { BookOpen, BookA, TextQuote, Quote, Target, Settings, Search, Clock, Plus, ChevronRight, Bookmark, X, Upload, Loader2, Flame, CheckCircle2, FileText, Book, Pencil } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth, SignInButton, SignUpButton, Show, UserButton } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
@@ -37,6 +37,9 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const [library, setLibrary] = useState<BookMetadata[]>([]);
+  const [editingDoc, setEditingDoc] = useState<{ id: string; title: string; type: 'book' | 'article' } | null>(null);
+  const [newTitle, setNewTitle] = useState('');
+  const [isSavingTitle, setIsSavingTitle] = useState(false);
 
   useEffect(() => {
     loadLibrary();
@@ -442,6 +445,42 @@ export default function Home() {
     }
   };
 
+  const handleSaveTitle = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!editingDoc || !newTitle.trim() || isSavingTitle) return;
+    setIsSavingTitle(true);
+    const trimmedTitle = newTitle.trim();
+
+    try {
+      // 1. Update in Cloudflare D1
+      let token: string | null = null;
+      try { token = await getToken(); } catch (e) {}
+      const patchHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) patchHeaders['Authorization'] = `Bearer ${token}`;
+
+      await fetch(`/api/documents/${editingDoc.id}`, {
+        method: 'PATCH',
+        headers: patchHeaders,
+        body: JSON.stringify({ title: trimmedTitle }),
+      });
+
+      // 2. Update in localforage quiet_library
+      const currentLib = await localforage.getItem<BookMetadata[]>('quiet_library') || [];
+      const updatedLib = currentLib.map(item => 
+        item.id === editingDoc.id ? { ...item, title: trimmedTitle } : item
+      );
+      await localforage.setItem('quiet_library', updatedLib);
+      setLibrary(updatedLib);
+
+      setEditingDoc(null);
+    } catch (err) {
+      console.error('Failed to update title:', err);
+      alert('保存失败，请稍后重试');
+    } finally {
+      setIsSavingTitle(false);
+    }
+  };
+
   const books = library.filter(b => b.category === 'book');
   const articles = library.filter(b => b.category === 'article');
   
@@ -522,17 +561,34 @@ export default function Home() {
             
             {/* Most Recent Book */}
             {mostRecentBook ? (
-              <Link href={`/reader?id=${mostRecentBook.id}`} className="group flex bg-white rounded-3xl border border-[#E5E5E5] overflow-hidden hover:shadow-xl transition-all hover:-translate-y-1">
-                <div className="w-32 bg-[#3D5A80]/10 flex flex-col items-center justify-center p-4 border-r border-[#E5E5E5]">
+              <div className="group flex bg-white rounded-3xl border border-[#E5E5E5] overflow-hidden hover:shadow-xl transition-all hover:-translate-y-1">
+                <Link href={`/reader?id=${mostRecentBook.id}`} className="w-32 bg-[#3D5A80]/10 flex flex-col items-center justify-center p-4 border-r border-[#E5E5E5] shrink-0">
                   <Book className="w-10 h-10 text-[#3D5A80] mb-2" />
                   <span className="text-[10px] font-bold uppercase tracking-widest text-[#3D5A80]">Book</span>
-                </div>
-                <div className="p-6 flex-1 flex flex-col justify-between">
+                </Link>
+                <div className="p-6 flex-1 flex flex-col justify-between min-w-0">
                   <div>
-                    <h3 className="font-serif font-bold text-xl text-[#111827] line-clamp-2 leading-tight mb-2">{mostRecentBook.title}</h3>
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <Link href={`/reader?id=${mostRecentBook.id}`} className="font-serif font-bold text-xl text-[#111827] line-clamp-2 leading-tight hover:text-[#3D5A80] transition-colors">
+                        {mostRecentBook.title}
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setEditingDoc({ id: mostRecentBook.id, title: mostRecentBook.title, type: 'book' });
+                          setNewTitle(mostRecentBook.title);
+                        }}
+                        className="p-1.5 text-[#9CA3AF] hover:text-[#3D5A80] hover:bg-[#3D5A80]/10 rounded-lg transition-colors shrink-0 cursor-pointer"
+                        title="修改书名 / Edit title"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                    </div>
                     <p className="text-sm text-[#6B7280]">{mostRecentBook.author}</p>
                   </div>
-                  <div className="mt-6">
+                  <Link href={`/reader?id=${mostRecentBook.id}`} className="mt-6 block">
                     <div className="flex justify-between items-center mb-2">
                       <span className="text-xs font-bold text-[#6B7280]">Status</span>
                       <span className="text-xs font-bold text-[#111827] uppercase tracking-widest">{mostRecentBook.isCompleted ? 'Completed' : mostRecentBook.progress > 0 ? `${mostRecentBook.progress}% Read` : 'New'}</span>
@@ -540,9 +596,9 @@ export default function Home() {
                     <div className="w-full bg-[#F3F4F6] rounded-full h-1.5 overflow-hidden">
                       <div className="bg-[#3D5A80] h-full rounded-full" style={{ width: `${mostRecentBook.isCompleted ? 100 : mostRecentBook.progress}%` }}></div>
                     </div>
-                  </div>
+                  </Link>
                 </div>
-              </Link>
+              </div>
             ) : (
               <div className="bg-white rounded-3xl border border-dashed border-[#D1D5DB] p-8 flex flex-col items-center justify-center text-center text-[#6B7280]">
                 <Book className="w-8 h-8 mb-3 opacity-20" />
@@ -552,17 +608,34 @@ export default function Home() {
 
             {/* Most Recent Article */}
             {mostRecentArticle ? (
-              <Link href={`/reader?id=${mostRecentArticle.id}`} className="group flex bg-white rounded-3xl border border-[#E5E5E5] overflow-hidden hover:shadow-xl transition-all hover:-translate-y-1">
-                <div className="w-32 bg-[#E07A5F]/10 flex flex-col items-center justify-center p-4 border-r border-[#E5E5E5]">
+              <div className="group flex bg-white rounded-3xl border border-[#E5E5E5] overflow-hidden hover:shadow-xl transition-all hover:-translate-y-1">
+                <Link href={`/reader?id=${mostRecentArticle.id}`} className="w-32 bg-[#E07A5F]/10 flex flex-col items-center justify-center p-4 border-r border-[#E5E5E5] shrink-0">
                   <FileText className="w-10 h-10 text-[#E07A5F] mb-2" />
                   <span className="text-[10px] font-bold uppercase tracking-widest text-[#E07A5F]">Article</span>
-                </div>
-                <div className="p-6 flex-1 flex flex-col justify-between">
+                </Link>
+                <div className="p-6 flex-1 flex flex-col justify-between min-w-0">
                   <div>
-                    <h3 className="font-serif font-bold text-xl text-[#111827] line-clamp-2 leading-tight mb-2">{mostRecentArticle.title}</h3>
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <Link href={`/reader?id=${mostRecentArticle.id}`} className="font-serif font-bold text-xl text-[#111827] line-clamp-2 leading-tight hover:text-[#E07A5F] transition-colors">
+                        {mostRecentArticle.title}
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setEditingDoc({ id: mostRecentArticle.id, title: mostRecentArticle.title, type: 'article' });
+                          setNewTitle(mostRecentArticle.title);
+                        }}
+                        className="p-1.5 text-[#9CA3AF] hover:text-[#E07A5F] hover:bg-[#E07A5F]/10 rounded-lg transition-colors shrink-0 cursor-pointer"
+                        title="修改文章名 / Edit title"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                    </div>
                     <p className="text-sm text-[#6B7280]">{mostRecentArticle.author}</p>
                   </div>
-                  <div className="mt-6">
+                  <Link href={`/reader?id=${mostRecentArticle.id}`} className="mt-6 block">
                     <div className="flex justify-between items-center mb-2">
                       <span className="text-xs font-bold text-[#6B7280]">Status</span>
                       <span className="text-xs font-bold text-[#111827] uppercase tracking-widest">{mostRecentArticle.isCompleted ? 'Completed' : mostRecentArticle.progress > 0 ? `${mostRecentArticle.progress}% Read` : 'New'}</span>
@@ -570,9 +643,9 @@ export default function Home() {
                     <div className="w-full bg-[#F3F4F6] rounded-full h-1.5 overflow-hidden">
                       <div className="bg-[#E07A5F] h-full rounded-full" style={{ width: `${mostRecentArticle.isCompleted ? 100 : mostRecentArticle.progress}%` }}></div>
                     </div>
-                  </div>
+                  </Link>
                 </div>
-              </Link>
+              </div>
             ) : (
               <div className="bg-white rounded-3xl border border-dashed border-[#D1D5DB] p-8 flex flex-col items-center justify-center text-center text-[#6B7280]">
                 <FileText className="w-8 h-8 mb-3 opacity-20" />
@@ -829,6 +902,60 @@ export default function Home() {
               )}
 
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Title Modal */}
+      {editingDoc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#111827]/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div 
+            className="bg-[#FAF9F6] border border-[#E5E5E5] rounded-3xl max-w-md w-full p-6 shadow-2xl relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-serif font-bold text-lg text-[#111827]">
+                {editingDoc.type === 'book' ? '修改书名' : '修改文章标题'}
+              </h3>
+              <button 
+                onClick={() => setEditingDoc(null)} 
+                className="text-[#9CA3AF] hover:text-[#111827] p-1.5 rounded-full hover:bg-black/5 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveTitle}>
+              <label className="block text-xs font-bold uppercase tracking-wider text-[#6B7280] mb-2">
+                {editingDoc.type === 'book' ? '书名 (Book Title)' : '文章标题 (Article Title)'}
+              </label>
+              <input
+                type="text"
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                autoFocus
+                className="w-full px-4 py-3 bg-white border border-[#E5E5E5] rounded-xl text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#3D5A80] focus:border-transparent mb-6 transition-all font-serif"
+                placeholder="请输入新标题..."
+              />
+
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingDoc(null)}
+                  className="px-4 py-2 text-sm font-medium text-[#6B7280] hover:text-[#111827] rounded-xl hover:bg-black/5 transition-colors cursor-pointer"
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingTitle || !newTitle.trim()}
+                  className="px-5 py-2 text-sm font-semibold text-white bg-[#111827] hover:bg-[#3D5A80] rounded-xl shadow-sm transition-all disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+                >
+                  {isSavingTitle && <Loader2 className="w-4 h-4 animate-spin" />}
+                  保存修改
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
