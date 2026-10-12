@@ -161,13 +161,36 @@ export default function Reader() {
           }
         }
 
+        // Background sync metadata with Cloud D1 to ensure completion status is always up to date
+        let token: string | null = null;
+        try { token = await getToken(); } catch(e) {}
+        const docHeaders: Record<string, string> = { 'Cache-Control': 'no-cache' };
+        if (token) docHeaders['Authorization'] = `Bearer ${token}`;
+
+        fetch(`/api/documents/${id}`, { headers: docHeaders })
+          .then(res => res.ok ? res.json() : null)
+          .then(data => {
+            if (data?.document) {
+              const cloudDoc = data.document;
+              const cloudCompleted = (cloudDoc.percentage || 0) >= 100;
+              setIsCompleted(cloudCompleted);
+              localforage.getItem<any[]>('quiet_library').then(lib => {
+                if (lib) {
+                  const target = lib.find(b => b.id === id);
+                  if (target) {
+                    target.isCompleted = cloudCompleted;
+                    target.progress = cloudDoc.percentage || 0;
+                    localforage.setItem('quiet_library', lib).catch(() => {});
+                  }
+                }
+              }).catch(() => {});
+            }
+          })
+          .catch(() => {});
+
         // 2. Fetch from Cloud API (D1 & R2) if local cache is missing or invalid
         if (!bookInfo || !isValidCachedFile) {
           setLoadingStatus('正在连接云端获取文档信息...');
-          let token: string | null = null;
-          try { token = await getToken(); } catch(e) {}
-          const docHeaders: Record<string, string> = { 'Cache-Control': 'no-cache' };
-          if (token) docHeaders['Authorization'] = `Bearer ${token}`;
 
           const docRes = await fetch(`/api/documents/${id}`, { headers: docHeaders });
           if (!docRes.ok) {
@@ -300,9 +323,20 @@ export default function Reader() {
   }, [fileData, fileType, bookId, highlightText]);
 
   
-  const markAsCompleted = async () => {
+  const toggleCompleted = async () => {
     if (!bookId) return;
-    setIsCompleted(true);
+    const newStatus = !isCompleted;
+    setIsCompleted(newStatus);
+
+    let newPercent = 100;
+    if (!newStatus) {
+      if (fileType === 'pdf' && numPages > 0) {
+        newPercent = Math.round((pageNumber / numPages) * 100);
+      } else {
+        newPercent = 0;
+      }
+    }
+
     // Cloud sync
     (async () => {
       try {
@@ -314,19 +348,19 @@ export default function Reader() {
         fetch(`/api/documents/${bookId}`, {
           method: 'PATCH',
           headers,
-          body: JSON.stringify({ percentage: 100 })
-        }).catch(e => console.error("Cloud mark completed error:", e));
+          body: JSON.stringify({ percentage: newPercent })
+        }).catch(e => console.error("Cloud toggle completed error:", e));
       } catch (err) {}
     })();
 
     const lib = await localforage.getItem<any[]>('quiet_library') || [];
     const idx = lib.findIndex(b => b.id === bookId);
     if (idx !== -1) {
-      lib[idx].isCompleted = true;
-      lib[idx].progress = 100;
+      lib[idx].isCompleted = newStatus;
+      lib[idx].progress = newPercent;
       await localforage.setItem('quiet_library', lib);
-      showToast("Marked as Completed!");
     }
+    showToast(newStatus ? "已标记为已读完 (Completed)" : "已恢复为阅读中 (In Progress)");
   };
 
   const saveProgress = async (currentLoc: string | number, progressPercent: number, totalPages: number = 0) => {
@@ -812,13 +846,18 @@ export default function Reader() {
           </div>
         )}
         {isCompleted ? (
-          <div className="flex items-center gap-2 px-4 py-2 bg-[#5B8266]/10 text-[#5B8266] rounded-full text-xs font-bold uppercase tracking-widest">
+          <button 
+            onClick={toggleCompleted}
+            className="flex items-center gap-2 px-4 py-2 bg-[#5B8266]/10 text-[#5B8266] hover:bg-[#5B8266]/20 rounded-full text-xs font-bold uppercase tracking-widest transition-colors cursor-pointer shadow-sm shrink-0"
+            title="点击可取消完成，恢复为阅读中"
+          >
             <Check className="w-4 h-4" /> Completed
-          </div>
+          </button>
         ) : (
           <button 
-            onClick={markAsCompleted}
-            className="flex items-center gap-2 px-4 py-2 bg-[#111827] hover:bg-[#3D5A80] text-white rounded-full text-xs font-bold uppercase tracking-widest transition-colors shadow-sm shrink-0"
+            onClick={toggleCompleted}
+            className="flex items-center gap-2 px-4 py-2 bg-[#111827] hover:bg-[#3D5A80] text-white rounded-full text-xs font-bold uppercase tracking-widest transition-colors shadow-sm shrink-0 cursor-pointer"
+            title="点击标记为读完"
           >
             <Check className="w-4 h-4" /> Mark Complete
           </button>
