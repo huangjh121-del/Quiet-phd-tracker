@@ -574,63 +574,6 @@ export default function Home() {
               </div>
             </div>
           </div>
-
-          {/* 30-Day Reading Rhythm Section: 3 Rows of 10 Circles */}
-          <div className="mt-8 pt-6 border-t border-[#EAE5DA] flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="space-y-1.5">
-              <div className="flex items-center gap-3">
-                <h3 className="font-serif font-bold text-xl text-[#111827]">
-                  30-Day Reading Rhythm
-                </h3>
-                {(() => {
-                  const days = displayDays.length > 0 ? displayDays : [];
-                  const activeCount = days.filter(d => readingStats.history && readingStats.history[d] > 0).length;
-                  return (
-                    <span className="text-[11px] font-mono font-bold text-[#8C7A6B] bg-[#EFECE6] px-2.5 py-0.5 rounded">
-                      {activeCount} / 30 Days Active
-                    </span>
-                  );
-                })()}
-              </div>
-              <p className="text-sm font-serif italic text-[#6B7280]">
-                Consistency over intensity · 30-day habit cadence
-              </p>
-            </div>
-
-            {/* Exactly 3 rows of 10 circles (grid-cols-10) */}
-            {(() => {
-              const days = displayDays.length === 30 ? displayDays : Array.from({ length: 30 }).map((_, i) => 'placeholder-' + i);
-              return (
-                <div className="grid grid-cols-10 gap-2 md:gap-2.5 shrink-0">
-                  {days.map((dateStr, i) => {
-                    const isPlaceholder = dateStr.startsWith('placeholder-');
-                    const mins = (!isPlaceholder && readingStats.history && readingStats.history[dateStr]) || 0;
-                    const isRead = mins > 0;
-                    const isToday = !isPlaceholder && dateStr === new Date().toDateString();
-                    return (
-                      <div 
-                        key={dateStr}
-                        className={`w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center transition-all cursor-default select-none ${
-                          isToday ? 'ring-2 ring-[#3D5A80] ring-offset-1' : ''
-                        }`}
-                        style={{
-                          backgroundColor: isRead ? '#C2410C' : '#FAF8F5',
-                          border: isRead ? '1px solid #9A3412' : '1px solid #D7CCC8',
-                          color: isRead ? '#FFFFFF' : '#8C7A6B',
-                          boxShadow: isRead ? '0 1px 3px rgba(194, 65, 12, 0.25)' : 'none'
-                        }}
-                        title={!isPlaceholder ? `${dateStr}: ${mins > 0 ? `${mins} mins read` : 'No reading recorded'}` : `Day ${i + 1}`}
-                      >
-                        <span className="text-[10px] md:text-[11px] font-mono font-bold leading-none">
-                          {i + 1}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })()}
-          </div>
         </header>
 
         {/* 2. Pick Up Where You Left Off (Physical Reading Showcase) */}
@@ -1085,6 +1028,86 @@ export default function Home() {
             </div>
           </div>
         </div>
+
+        {/* 4. 30-Day Reading Rhythm (Habit Matrix at Bottom) */}
+        <section className="pt-10 border-t border-[#EAE5DA]">
+          <div className="flex flex-col lg:flex-row lg:items-center gap-8 lg:gap-14">
+            {/* Left Narrative & Stats Block (No empty void) */}
+            <div className="space-y-3 max-w-sm shrink-0">
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] font-mono font-bold tracking-[0.2em] text-[#8C7A6B] uppercase">
+                  Habit Matrix
+                </span>
+                {(() => {
+                  const days = displayDays.length > 0 ? displayDays : [];
+                  const activeCount = days.filter(d => readingStats.history && readingStats.history[d] > 0).length;
+                  return (
+                    <span className="text-[11px] font-mono font-bold text-[#8C7A6B] bg-[#EFECE6] px-2.5 py-0.5 rounded">
+                      {activeCount} / 30 Days Active
+                    </span>
+                  );
+                })()}
+              </div>
+              <h3 className="font-serif font-bold text-2xl text-[#111827]">
+                30-Day Reading Rhythm
+              </h3>
+              <p className="text-sm font-serif italic text-[#6B7280] leading-relaxed">
+                Consistency over intensity. Reading each day unfolds a colorful mosaic of your intellectual journey.
+              </p>
+            </div>
+
+            {/* Architectural Vertical Hairline Divider */}
+            <div className="hidden lg:block w-[1px] h-28 bg-[#E7E2D6] shrink-0" />
+
+            {/* 3 Rows of 10 Rainbow Circles (Directly adjacent, tight and balanced) */}
+            {(() => {
+              // Curated harmonious rainbow palette with 10 distinctive jewel tones across the spectrum
+              const rainbowPalette = [
+                '#E11D48', // Day 1, 11, 21: Rose Crimson
+                '#EA580C', // Day 2, 12, 22: Sunset Orange
+                '#D97706', // Day 3, 13, 23: Golden Amber
+                '#16A34A', // Day 4, 14, 24: Leaf Green
+                '#0D9488', // Day 5, 15, 25: Teal Jade
+                '#0284C7', // Day 6, 16, 26: Deep Azure
+                '#2563EB', // Day 7, 17, 27: Royal Sapphire
+                '#4F46E5', // Day 8, 18, 28: Twilight Indigo
+                '#7C3AED', // Day 9, 19, 29: Rich Violet
+                '#C026D3', // Day 10, 20, 30: Radiant Magenta
+              ];
+              const days = displayDays.length === 30 ? displayDays : Array.from({ length: 30 }).map((_, i) => 'placeholder-' + i);
+              return (
+                <div className="grid grid-cols-10 gap-2.5 sm:gap-3 shrink-0">
+                  {days.map((dateStr, i) => {
+                    const isPlaceholder = dateStr.startsWith('placeholder-');
+                    const mins = (!isPlaceholder && readingStats.history && readingStats.history[dateStr]) || 0;
+                    const isRead = mins > 0;
+                    const isToday = !isPlaceholder && dateStr === new Date().toDateString();
+                    const color = rainbowPalette[i % rainbowPalette.length];
+                    return (
+                      <div 
+                        key={dateStr}
+                        className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center transition-all cursor-default select-none ${
+                          isToday ? 'ring-2 ring-[#111827] ring-offset-2' : ''
+                        }`}
+                        style={{
+                          backgroundColor: isRead ? color : '#FAF8F5',
+                          border: isRead ? `1px solid ${color}` : '1px solid #D7CCC8',
+                          color: isRead ? '#FFFFFF' : '#8C7A6B',
+                          boxShadow: isRead ? `0 2px 8px ${color}45` : 'none'
+                        }}
+                        title={!isPlaceholder ? `${dateStr}: ${mins > 0 ? `${mins} mins read` : 'No reading recorded'}` : `Day ${i + 1}`}
+                      >
+                        <span className="text-[11px] font-mono font-bold leading-none">
+                          {i + 1}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
+        </section>
       </div>
 
       {/* Import Modal */}
