@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   BookOpen, BookA, TextQuote, Target, Settings, Search, Clock, Plus, 
   ChevronRight, Bookmark, X, Upload, Loader2, Flame, CheckCircle2, 
-  FileText, Book, Pencil, Sparkles, ArrowUpRight, Library, Layers
+  FileText, Book, Pencil, Sparkles, ArrowUpRight, Library, Layers, Highlighter
 } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth, SignInButton, Show, UserButton } from '@clerk/nextjs';
@@ -34,7 +34,7 @@ export default function Home() {
   const [pastedTitle, setPastedTitle] = useState('');
   const [pastedText, setPastedText] = useState('');
   const [isExtracting, setIsExtracting] = useState(false);
-  const [libStats, setLibStats] = useState({ words: 0, phrases: 0, sentences: 0, dueWords: 0, duePhrases: 0 });
+  const [libStats, setLibStats] = useState({ words: 0, phrases: 0, sentences: 0, notes: 0, dueWords: 0, duePhrases: 0 });
   const [readingStats, setReadingStats] = useState({ todayMins: 0, streak: 0, activeDays: [] as number[], history: {} as Record<string, number> });
   const [displayDays, setDisplayDays] = useState<string[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -56,15 +56,17 @@ export default function Home() {
         const headers: Record<string, string> = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
 
-        const [wRes, pRes, sRes] = await Promise.all([
+        const [wRes, pRes, sRes, nRes] = await Promise.all([
           fetch('/api/library-items?type=word&t=' + Date.now(), { headers }).then(r => r.json()).catch(() => ({ items: [] })),
           fetch('/api/library-items?type=phrase&t=' + Date.now(), { headers }).then(r => r.json()).catch(() => ({ items: [] })),
-          fetch('/api/sentences?t=' + Date.now(), { headers }).then(r => r.json()).catch(() => ({ sentences: [] }))
+          fetch('/api/sentences?t=' + Date.now(), { headers }).then(r => r.json()).catch(() => ({ sentences: [] })),
+          fetch('/api/notes?t=' + Date.now(), { headers }).then(r => r.json()).catch(() => ({ notes: [] }))
         ]);
 
         const words = wRes.items || [];
         const phrases = pRes.items || [];
         const sentences = sRes.sentences || [];
+        const notes = nRes.notes || [];
         const endOfToday = new Date();
         endOfToday.setHours(23, 59, 59, 999);
         const endOfTodayMs = endOfToday.getTime();
@@ -73,6 +75,7 @@ export default function Home() {
           words: words.length,
           phrases: phrases.length,
           sentences: sentences.length,
+          notes: notes.length,
           dueWords: words.filter((w: any) => (w.repetition || 0) > 0 && (w.next_review_at || 0) <= endOfTodayMs).length,
           duePhrases: phrases.filter((p: any) => (p.repetitions || 0) > 0 && (p.next_review_at || 0) <= endOfTodayMs).length
         });
@@ -637,12 +640,8 @@ export default function Home() {
                       {/* Paper edge right */}
                       <div className="absolute -right-1 top-1 bottom-1 w-1 bg-[#D7CCC8] rounded-r-xs" />
                       
-                      {/* Gilt header */}
-                      <div className="text-center pt-0.5">
-                        <span className="text-[7px] font-mono font-bold uppercase tracking-widest text-sky-400/80">
-                          {mostRecentBook.type.toUpperCase()}
-                        </span>
-                      </div>
+                      {/* Subtle foil line */}
+                      <div className="w-6 h-[1px] bg-amber-400/40 mx-auto mt-1" />
                       
                       {/* Book title */}
                       <div className="my-auto text-center px-0.5">
@@ -746,11 +745,8 @@ export default function Home() {
                       <div className="absolute left-1 top-4 w-0.5 h-2 bg-[#94A3B8] rounded-xs" />
                       <div className="absolute left-1 bottom-4 w-0.5 h-2 bg-[#94A3B8] rounded-xs" />
 
-                      <div className="text-center pt-0.5">
-                        <span className="text-[7px] font-mono font-bold uppercase tracking-wider text-[#C2410C]">
-                          ESSAY
-                        </span>
-                      </div>
+                      {/* Subtle accent header line */}
+                      <div className="w-6 h-[1.5px] bg-[#C2410C]/40 mx-auto mt-1 rounded-full" />
 
                       <div className="my-auto text-center px-0.5">
                         <span className="font-serif font-bold text-[10px] md:text-xs text-[#1E293B] line-clamp-3 leading-tight">
@@ -759,8 +755,8 @@ export default function Home() {
                       </div>
 
                       <div className="border-t border-[#E7E2D6] pt-1 text-center">
-                        <span className="text-[7px] font-mono text-[#15803D] font-bold">
-                          {mostRecentArticle.isCompleted ? 'COMPLETED' : `${mostRecentArticle.progress}%`}
+                        <span className="text-[7.5px] font-mono text-[#8C7A6B] font-bold">
+                          {mostRecentArticle.progress}%
                         </span>
                       </div>
                     </div>
@@ -865,34 +861,31 @@ export default function Home() {
                       {books.length} Volumes
                     </span>
                   </div>
-                  <h3 className="font-serif font-bold text-xl text-[#111827] group-hover:text-[#3D5A80] transition-colors mb-1">
+                  <h3 className="font-serif font-bold text-xl text-[#111827] group-hover:text-[#3D5A80] transition-colors">
                     Book Shelf
                   </h3>
-                  <p className="text-xs text-[#6B7280] font-serif">
-                    Authentic 3D hardcover bindings & wooden shelves
-                  </p>
                 </div>
 
-                {/* Miniature Bookshelf Ledge with 3 Spines */}
+                {/* Miniature Bookshelf Ledge with 3 Spines (Clean, realistic bindings) */}
                 <div className="mt-8 pt-4 relative">
                   <div className="flex items-end justify-center gap-2 mb-[-2px] px-4">
                     {/* Spine 1 */}
-                    <div className="w-9 h-20 rounded-t-xs bg-gradient-to-r from-[#1E293B] to-[#0F172A] border border-[#334155] shadow-md flex items-center justify-center">
-                      <span className="rotate-90 text-[7px] font-mono font-bold text-slate-300 uppercase tracking-widest">
-                        VOL. I
-                      </span>
+                    <div className="w-9 h-20 rounded-t-xs bg-gradient-to-r from-[#1E293B] to-[#0F172A] border border-[#334155] shadow-md flex flex-col justify-around py-3 px-1 items-center">
+                      <div className="w-full h-[1px] bg-amber-400/30" />
+                      <div className="w-full h-[1px] bg-amber-400/30" />
+                      <div className="w-full h-[1px] bg-amber-400/30" />
                     </div>
                     {/* Spine 2 */}
-                    <div className="w-11 h-24 rounded-t-xs bg-gradient-to-r from-[#7F1D1D] to-[#5C1414] border border-[#991B1B] shadow-md flex items-center justify-center">
-                      <span className="rotate-90 text-[7px] font-mono font-bold text-red-200 uppercase tracking-widest">
-                        CLASSIC
-                      </span>
+                    <div className="w-11 h-24 rounded-t-xs bg-gradient-to-r from-[#7F1D1D] to-[#5C1414] border border-[#991B1B] shadow-md flex flex-col justify-around py-3 px-1 items-center">
+                      <div className="w-full h-[1px] bg-amber-400/30" />
+                      <div className="w-full h-[1px] bg-amber-400/30" />
+                      <div className="w-full h-[1px] bg-amber-400/30" />
                     </div>
                     {/* Spine 3 */}
-                    <div className="w-10 h-22 rounded-t-xs bg-gradient-to-r from-[#14532D] to-[#0F3D21] border border-[#166534] shadow-md flex items-center justify-center">
-                      <span className="rotate-90 text-[7px] font-mono font-bold text-green-200 uppercase tracking-widest">
-                        FOLIO
-                      </span>
+                    <div className="w-10 h-22 rounded-t-xs bg-gradient-to-r from-[#14532D] to-[#0F3D21] border border-[#166534] shadow-md flex flex-col justify-around py-3 px-1 items-center">
+                      <div className="w-full h-[1px] bg-amber-400/30" />
+                      <div className="w-full h-[1px] bg-amber-400/30" />
+                      <div className="w-full h-[1px] bg-amber-400/30" />
                     </div>
                   </div>
                   {/* Miniature Wood Shelf Ledge */}
@@ -920,33 +913,29 @@ export default function Home() {
                       {articles.length} Articles
                     </span>
                   </div>
-                  <h3 className="font-serif font-bold text-xl text-[#111827] group-hover:text-[#C2410C] transition-colors mb-1">
+                  <h3 className="font-serif font-bold text-xl text-[#111827] group-hover:text-[#C2410C] transition-colors">
                     Article Shelf
                   </h3>
-                  <p className="text-xs text-[#6B7280] font-serif">
-                    Editorial magazine issues & long-form essays
-                  </p>
                 </div>
 
-                {/* Miniature Magazine Display Rack with 2 Overlapping Issues */}
+                {/* Miniature Magazine Display Rack with 2 Overlapping Issues (Clean minimalist paper layout) */}
                 <div className="mt-8 pt-4 relative">
                   <div className="flex items-end justify-center mb-[-2px] px-4">
                     {/* Issue 1 (Underneath, tilted) */}
-                    <div className="w-16 h-20 rounded-md bg-[#FFFDF9] border border-[#E7DFD5] p-1.5 shadow-md -rotate-6 translate-x-2">
-                      <div className="text-[6px] font-mono font-bold text-[#9A3412] uppercase border-b border-[#E7E2D6] pb-0.5">
-                        REVIEW
-                      </div>
-                      <div className="mt-2 text-[7px] font-serif font-bold text-[#1E293B] line-clamp-2">
-                        Modern Mind
+                    <div className="w-16 h-20 rounded-md bg-[#FFFDF9] border border-[#E7DFD5] p-2 shadow-md -rotate-6 translate-x-2 flex flex-col justify-between">
+                      <div className="w-6 h-1 bg-[#C2410C]/40 rounded-xs" />
+                      <div className="space-y-1">
+                        <div className="w-full h-1 bg-[#E2E8F0] rounded-xs" />
+                        <div className="w-3/4 h-1 bg-[#E2E8F0] rounded-xs" />
                       </div>
                     </div>
                     {/* Issue 2 (Top) */}
-                    <div className="w-18 h-24 rounded-md bg-[#F8F9FA] border border-[#DCE2EA] p-2 shadow-lg z-10 -translate-x-1">
-                      <div className="text-[6px] font-mono font-bold text-[#1E3A8A] uppercase border-b border-[#DCE2EA] pb-0.5">
-                        DISPATCH
-                      </div>
-                      <div className="mt-2 text-[8px] font-serif font-bold text-[#1E293B] line-clamp-3 leading-tight">
-                        The Long View on Reading
+                    <div className="w-18 h-24 rounded-md bg-[#F8F9FA] border border-[#DCE2EA] p-2.5 shadow-lg z-10 -translate-x-1 flex flex-col justify-between">
+                      <div className="w-7 h-1 bg-[#3D5A80]/50 rounded-xs" />
+                      <div className="space-y-1">
+                        <div className="w-full h-1.5 bg-[#CBD5E1] rounded-xs" />
+                        <div className="w-5/6 h-1 bg-[#E2E8F0] rounded-xs" />
+                        <div className="w-2/3 h-1 bg-[#E2E8F0] rounded-xs" />
                       </div>
                     </div>
                   </div>
@@ -978,15 +967,15 @@ export default function Home() {
             <div className="bg-[#FAF8F5] border border-[#E7E2D6] rounded-3xl p-6 md:p-7 shadow-xs space-y-6">
               <div className="border-b border-[#EAE5DA] pb-4">
                 <span className="text-xs font-serif italic text-[#8C7A6B]">
-                  Spaced Repetition & Vocabulary Memory
+                  Spaced Repetition & Reading Memory
                 </span>
               </div>
 
-              {/* Elegant Index Rows */}
+              {/* Elegant Index Rows (Vocabulary, Expressions, Sentences, Reading Notes) */}
               <div className="space-y-3">
                 <Link 
                   href="/review/words"
-                  className="flex items-center justify-between p-3.5 rounded-2xl bg-white border border-[#EAE5DA] hover:border-[#3D5A80]/40 hover:shadow-sm transition-all group"
+                  className="flex items-center justify-between p-3.5 rounded-2xl bg-white border border-[#EAE5DA] hover:border-[#3D5A80]/40 hover:shadow-xs transition-all group"
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-[#3D5A80]/10 text-[#3D5A80] flex items-center justify-center group-hover:scale-105 transition-transform">
@@ -1006,7 +995,7 @@ export default function Home() {
 
                 <Link 
                   href="/review/phrases"
-                  className="flex items-center justify-between p-3.5 rounded-2xl bg-white border border-[#EAE5DA] hover:border-[#C2410C]/40 hover:shadow-sm transition-all group"
+                  className="flex items-center justify-between p-3.5 rounded-2xl bg-white border border-[#EAE5DA] hover:border-[#C2410C]/40 hover:shadow-xs transition-all group"
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-[#FFF1EB] text-[#C2410C] flex items-center justify-center group-hover:scale-105 transition-transform">
@@ -1026,7 +1015,7 @@ export default function Home() {
 
                 <Link 
                   href="/sentences"
-                  className="flex items-center justify-between p-3.5 rounded-2xl bg-white border border-[#EAE5DA] hover:border-[#15803D]/40 hover:shadow-sm transition-all group"
+                  className="flex items-center justify-between p-3.5 rounded-2xl bg-white border border-[#EAE5DA] hover:border-[#15803D]/40 hover:shadow-xs transition-all group"
                 >
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-[#DCFCE7] text-[#15803D] flex items-center justify-center group-hover:scale-105 transition-transform">
@@ -1039,21 +1028,21 @@ export default function Home() {
                   </div>
                   <ChevronRight className="w-4 h-4 text-[#9CA3AF] group-hover:translate-x-1 transition-transform" />
                 </Link>
-              </div>
 
-              {/* Review Call-to-Action */}
-              <div className="pt-2">
-                <Link
-                  href="/review/session"
-                  className="w-full py-3.5 bg-[#1E293B] hover:bg-[#334155] text-white rounded-2xl font-bold text-sm shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 group cursor-pointer"
+                <Link 
+                  href="/notes"
+                  className="flex items-center justify-between p-3.5 rounded-2xl bg-white border border-[#EAE5DA] hover:border-[#D97706]/40 hover:shadow-xs transition-all group"
                 >
-                  <Sparkles className="w-4 h-4 text-amber-300" />
-                  <span>Start Daily Review</span>
-                  {totalDue > 0 && (
-                    <span className="bg-amber-400 text-[#111827] text-[10px] font-mono font-bold px-2 py-0.5 rounded-full">
-                      {totalDue}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-[#FEF3C7] text-[#D97706] flex items-center justify-center group-hover:scale-105 transition-transform">
+                      <Highlighter className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="block font-bold text-sm text-[#111827]">Reading Notes</span>
+                      <span className="text-[10px] font-mono text-[#8C7A6B]">{libStats.notes} highlights & reflections</span>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-[#9CA3AF] group-hover:translate-x-1 transition-transform" />
                 </Link>
               </div>
             </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, PlayCircle, Plus, Type, Check, Loader2, ChevronLeft, ChevronRight, Menu, List, X, AlertCircle, RefreshCw, Pencil } from 'lucide-react';
+import { ArrowLeft, PlayCircle, Plus, Type, Check, Loader2, ChevronLeft, ChevronRight, Menu, List, X, AlertCircle, RefreshCw, Pencil, Highlighter } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import localforage from 'localforage';
@@ -113,6 +113,48 @@ export default function Reader() {
       alert('保存失败，请稍后重试');
     } finally {
       setIsSavingTitle(false);
+    }
+  };
+
+  // Reading Notes Modal State
+  const [noteModal, setNoteModal] = useState<{ text: string } | null>(null);
+  const [noteInput, setNoteInput] = useState('');
+  const [isSavingNote, setIsSavingNote] = useState(false);
+
+  const handleSaveNote = async () => {
+    if (!noteModal) return;
+    setIsSavingNote(true);
+    try {
+      let token: string | null = null;
+      try { token = await getToken(); } catch(e) {}
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const loc = fileType === 'pdf' ? pageNumber : (fileType === 'epub' ? location : '');
+      const currentId = bookId || searchParamsHook.get('id') || '';
+      const res = await fetch('/api/notes', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          bookId: currentId,
+          sourceTitle: bookTitle,
+          highlightedText: noteModal.text,
+          note: noteInput.trim(),
+          location: String(loc || '')
+        })
+      });
+
+      if (res.ok) {
+        showToast('Saved to Reading Notes!');
+        setNoteModal(null);
+        setNoteInput('');
+      } else {
+        showToast('Failed to save note');
+      }
+    } catch (err) {
+      showToast('Failed to save note');
+    } finally {
+      setIsSavingNote(false);
     }
   };
 
@@ -275,14 +317,16 @@ export default function Reader() {
           }
         }
 
+        const targetLoc = searchParamsHook.get('loc');
         if (bookInfo) {
           setBookTitle(bookInfo.title);
           setIsCompleted(bookInfo.isCompleted || false);
           setFileType(bookInfo.type);
           if (bookInfo.type === 'pdf') {
-            setPageNumber(Number(bookInfo.currentLocation) || 1);
+            const p = targetLoc ? parseInt(targetLoc) : Number(bookInfo.currentLocation);
+            setPageNumber(p && !isNaN(p) && p >= 1 ? p : 1);
           } else {
-            setLocation(bookInfo.currentLocation || 0);
+            setLocation(targetLoc || bookInfo.currentLocation || 0);
           }
         }
 
@@ -777,16 +821,20 @@ export default function Reader() {
             const from = searchParamsHook.get('from');
             if (from === 'sentences') {
               router.push('/sentences');
+            } else if (from === 'notes') {
+              router.push('/notes');
             } else if (window.history.length > 2) {
               router.back();
             } else {
               router.push('/');
             }
-          }} className="flex items-center justify-center w-10 h-10 rounded-full hover:bg-white hover:shadow-sm border border-transparent hover:border-[#E5E5E5] text-[#6B7280] hover:text-[#111827] transition-all cursor-pointer">
+          }} className="flex items-center justify-center w-10 h-10 rounded-full hover:bg-white hover:shadow-sm border border-transparent hover:border-[#E5E5E5] text-[#6B7280] hover:text-[#111827] transition-all cursor-pointer" title={searchParamsHook.get('from') === 'notes' ? "Back to Reading Notes" : "Back"}>
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex flex-col">
-            <span className="text-[10px] font-bold tracking-widest uppercase text-[#6B7280]">Currently Reading</span>
+            <span className="text-[10px] font-bold tracking-widest uppercase text-[#6B7280]">
+              {searchParamsHook.get('from') === 'notes' ? 'Reading Notes Context' : 'Currently Reading'}
+            </span>
             <div className="flex items-center gap-2 group">
               <h1 className="font-serif font-medium text-sm text-[#111827] max-w-xs md:max-w-md truncate">
                 {bookTitle || (fileType === 'pdf' ? 'PDF Document' : 'EPUB Document')}
@@ -1220,6 +1268,84 @@ export default function Reader() {
           >
             Save Sentence
           </button>
+          <div className="w-[1px] h-4 bg-white/20 mx-1"></div>
+          <button 
+            onClick={() => {
+              setNoteModal({ text: selectionMenu.text });
+              setNoteInput('');
+              setSelectionMenu(null);
+              window.getSelection()?.removeAllRanges();
+            }}
+            className="px-3 py-1.5 text-xs font-bold tracking-wide rounded-lg hover:bg-white/20 transition-colors whitespace-nowrap flex items-center gap-1.5 text-amber-200 hover:text-white"
+          >
+            <Highlighter className="w-3.5 h-3.5 text-amber-400" />
+            <span>Add Note</span>
+          </button>
+        </div>
+      )}
+
+      {/* Reading Note Creation Modal */}
+      {noteModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-[#FAF8F5] border border-[#E5E0D8] rounded-3xl p-6 md:p-8 max-w-lg w-full shadow-2xl space-y-5 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-[#EAE5DA] pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-700">
+                  <Highlighter className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-serif font-bold text-lg text-[#111827]">Add Reading Note</h3>
+                  <span className="text-[10px] font-mono text-[#8C7A6B] block">Highlight & personal reflections</span>
+                </div>
+              </div>
+              <button 
+                onClick={() => setNoteModal(null)} 
+                className="p-1 rounded-full text-[#8C7A6B] hover:text-[#111827] cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Selected Excerpt */}
+            <div className="p-4 bg-white border border-[#E7E2D6] rounded-2xl border-l-4 border-l-amber-600">
+              <p className="font-serif text-sm italic text-[#1E293B] leading-relaxed max-h-40 overflow-y-auto custom-scrollbar">
+                &ldquo;{noteModal.text}&rdquo;
+              </p>
+            </div>
+
+            {/* User Thought / Note textarea */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-mono uppercase tracking-wider text-[#8C7A6B]">
+                Personal Reflection or Thoughts (Optional)
+              </label>
+              <textarea
+                rows={3}
+                value={noteInput}
+                onChange={(e) => setNoteInput(e.target.value)}
+                placeholder="Write your thought, note, or why this quote matters to you..."
+                className="w-full p-3 bg-white border border-[#E7E2D6] rounded-xl text-sm font-serif text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#3D5A80]"
+                autoFocus
+              />
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                onClick={() => setNoteModal(null)}
+                className="px-4 py-2 text-xs font-semibold text-[#8C7A6B] hover:text-[#111827] cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveNote}
+                disabled={isSavingNote}
+                className="px-5 py-2.5 bg-[#1E293B] hover:bg-[#334155] text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isSavingNote ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                <span>Save to Reading Notes</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
       
