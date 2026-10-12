@@ -39,13 +39,17 @@ export default function WordsLibrary() {
     }
   };
 
-  const [now, setNow] = useState(0);
-  useEffect(() => setNow(Date.now()), []);
+  const [endOfTodayMs, setEndOfTodayMs] = useState(0);
+  useEffect(() => {
+    const endOfToday = new Date();
+    endOfToday.setHours(23, 59, 59, 999);
+    setEndOfTodayMs(endOfToday.getTime());
+  }, []);
   // New words are those with repetition = 0
-  const newWords = items.filter(i => i.repetition === 0);
-  // Due words are those that have been learned (repetition > 0) and their review time has arrived
-  const dueWords = items.filter(i => i.repetition > 0 && i.next_review_at <= now);
-  const learnedWords = items.filter(i => i.repetition > 0);
+  const newWords = items.filter(i => (i.repetition || 0) === 0);
+  // Due words are those that have been learned (repetition > 0) and their review date is on or before today
+  const dueWords = items.filter(i => (i.repetition || 0) > 0 && (i.next_review_at || 0) <= endOfTodayMs);
+  const learnedWords = items.filter(i => (i.repetition || 0) > 0);
 
   return (
     <div className="min-h-screen bg-[#FAF9F6] text-[#1C1C1C] flex flex-col relative selection:bg-[#E2E8F0]">
@@ -88,8 +92,8 @@ export default function WordsLibrary() {
         ) : (
           <div className="space-y-4">
             {items.map(item => {
-              const isNew = item.repetition === 0;
-              const isDue = !isNew && item.next_review_at <= now;
+              const isNew = (item.repetition || 0) === 0;
+              const isDue = !isNew && (item.next_review_at || 0) <= endOfTodayMs;
               
               return (
                 <div key={item.id} className="bg-white p-5 rounded-2xl shadow-sm border border-[#E5E5E5] flex items-center justify-between group hover:border-[#D1D5DB] transition-all">

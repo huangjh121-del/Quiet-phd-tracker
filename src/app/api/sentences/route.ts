@@ -11,6 +11,7 @@ const NO_CACHE_HEADERS = {
 
 export async function GET(req: Request) {
   try {
+    const _url = new URL(req.url);
     const { userId } = await auth();
 
     const ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;

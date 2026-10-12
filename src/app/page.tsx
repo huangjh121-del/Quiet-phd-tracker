@@ -57,13 +57,16 @@ export default function Home() {
         const words = wRes.items || [];
         const phrases = pRes.items || [];
         const sentences = sRes.sentences || [];
-        const now = Date.now();
+        const endOfToday = new Date();
+        endOfToday.setHours(23, 59, 59, 999);
+        const endOfTodayMs = endOfToday.getTime();
+
         setLibStats({
           words: words.length,
           phrases: phrases.length,
           sentences: sentences.length,
-          dueWords: words.filter((w: any) => (w.repetition || 0) > 0 && w.next_review_at <= now).length,
-          duePhrases: phrases.filter((p: any) => (p.repetitions || 0) > 0 && p.next_review_at <= now).length
+          dueWords: words.filter((w: any) => (w.repetition || 0) > 0 && (w.next_review_at || 0) <= endOfTodayMs).length,
+          duePhrases: phrases.filter((p: any) => (p.repetitions || 0) > 0 && (p.next_review_at || 0) <= endOfTodayMs).length
         });
       } catch (err) {
         console.warn("Failed to load lib stats:", err);

@@ -27,7 +27,7 @@ function calculateSM2(quality: number, repetitions: number, easeFactor: number, 
 
 export async function POST(req: Request) {
   try {
-    const { id, type, quality, currentEase, currentReps, currentInterval } = await req.json();
+    const { id, type, quality, currentEase, currentReps, currentInterval, tzOffset } = await req.json();
     if (!id || !type || quality === undefined) return NextResponse.json({ error: 'Missing data' }, { status: 400 });
 
     const ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -45,8 +45,14 @@ export async function POST(req: Request) {
       currentInterval || 0
     );
 
-    // Convert interval (days) to ms and add to now
-    const nextReviewAt = Date.now() + (newInterval * 24 * 60 * 60 * 1000);
+    // Calculate nextReviewAt strictly by calendar days, normalized to 00:00:00 of the target day
+    // tzOffset is in minutes (e.g. -480 for UTC+8, or 0 if omitted)
+    const offsetMs = typeof tzOffset === 'number' ? tzOffset * 60000 : 0;
+    const localNow = new Date(Date.now() - offsetMs);
+    localNow.setDate(localNow.getDate() + newInterval);
+    localNow.setHours(0, 0, 0, 0);
+    const nextReviewAt = localNow.getTime() + offsetMs;
+
     const tableName = type === 'word' ? 'saved_words' : 'saved_phrases';
     const idColumn = type === 'word' ? 'word' : 'id';
     const repColumn = type === 'word' ? 'repetition' : 'repetitions';

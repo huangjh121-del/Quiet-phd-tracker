@@ -17,7 +17,9 @@ function MainContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    fetch('/api/words')
+    const endOfToday = new Date();
+    endOfToday.setHours(23, 59, 59, 999);
+    fetch(`/api/words?before=${endOfToday.getTime()}&t=${Date.now()}`)
       .then(res => res.json())
       .then(data => {
         if (data.items) setItems(data.items.filter((i: any) => i.type === reviewType));
@@ -27,7 +29,7 @@ function MainContent() {
         console.error("Failed to load review items", err);
         setIsLoading(false);
       });
-  }, []);
+  }, [reviewType]);
 
   const handleNext = async (quality: number) => {
     const currentItem = items[currentIndex];
@@ -43,7 +45,8 @@ function MainContent() {
           quality,
           currentEase: currentItem.ease_factor,
           currentReps: currentItem.repetition ?? currentItem.repetitions ?? 0,
-          currentInterval: currentItem.interval
+          currentInterval: currentItem.interval,
+          tzOffset: new Date().getTimezoneOffset()
         })
       });
     } catch(e) {

@@ -39,8 +39,13 @@ function LearnSessionInner() {
         body: JSON.stringify({
           type,
           id: currentItem.id || currentItem.word,
-          // Set next review to tomorrow
-          nextReviewAt: Date.now() + 86400000 
+          // Set next review to tomorrow at start of day (00:00:00)
+          nextReviewAt: (() => {
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            tomorrow.setHours(0, 0, 0, 0);
+            return tomorrow.getTime();
+          })()
         })
       });
       
