@@ -915,7 +915,7 @@ export default function Home() {
           >
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-serif font-bold text-lg text-[#111827]">
-                {editingDoc.type === 'book' ? '修改书名' : '修改文章标题'}
+                {editingDoc.type === 'book' ? 'Edit Book Title' : 'Edit Article Title'}
               </h3>
               <button 
                 onClick={() => setEditingDoc(null)} 
@@ -927,7 +927,7 @@ export default function Home() {
 
             <form onSubmit={handleSaveTitle}>
               <label className="block text-xs font-bold uppercase tracking-wider text-[#6B7280] mb-2">
-                {editingDoc.type === 'book' ? '书名 (Book Title)' : '文章标题 (Article Title)'}
+                {editingDoc.type === 'book' ? 'Book Title' : 'Article Title'}
               </label>
               <input
                 type="text"
@@ -935,7 +935,7 @@ export default function Home() {
                 onChange={(e) => setNewTitle(e.target.value)}
                 autoFocus
                 className="w-full px-4 py-3 bg-white border border-[#E5E5E5] rounded-xl text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#3D5A80] focus:border-transparent mb-6 transition-all font-serif"
-                placeholder="请输入新标题..."
+                placeholder="Enter new title..."
               />
 
               <div className="flex items-center justify-end gap-3">
@@ -944,7 +944,7 @@ export default function Home() {
                   onClick={() => setEditingDoc(null)}
                   className="px-4 py-2 text-sm font-medium text-[#6B7280] hover:text-[#111827] rounded-xl hover:bg-black/5 transition-colors cursor-pointer"
                 >
-                  取消
+                  Cancel
                 </button>
                 <button
                   type="submit"
@@ -952,7 +952,7 @@ export default function Home() {
                   className="px-5 py-2 text-sm font-semibold text-white bg-[#111827] hover:bg-[#3D5A80] rounded-xl shadow-sm transition-all disabled:opacity-50 flex items-center gap-2 cursor-pointer"
                 >
                   {isSavingTitle && <Loader2 className="w-4 h-4 animate-spin" />}
-                  保存修改
+                  Save Changes
                 </button>
               </div>
             </form>

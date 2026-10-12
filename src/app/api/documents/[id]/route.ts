@@ -61,7 +61,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const { id } = await params;
     const body = await req.json();
-    const { readingProgress, totalProgress, percentage, title, author } = body;
+    const { readingProgress, totalProgress, percentage, title, author, source, publishedAt, published_at } = body;
 
     const now = Date.now();
     let updates = ['last_read_at = ?'];
@@ -74,6 +74,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (author !== undefined) {
       updates.push('author = ?');
       sqlParams.push(author);
+    }
+    if (source !== undefined) {
+      updates.push('source = ?');
+      sqlParams.push(source);
+    }
+    const pubDate = publishedAt !== undefined ? publishedAt : published_at;
+    if (pubDate !== undefined) {
+      updates.push('published_at = ?');
+      sqlParams.push(pubDate);
     }
     if (readingProgress !== undefined) {
       updates.push('reading_progress = ?');

@@ -397,7 +397,7 @@ export default function Reader() {
       lib[idx].progress = newPercent;
       await localforage.setItem('quiet_library', lib);
     }
-    showToast(newStatus ? "已标记为已读完 (Completed)" : "已恢复为阅读中 (In Progress)");
+    showToast(newStatus ? "Marked as completed" : "Marked as in progress");
   };
 
   const saveProgress = async (currentLoc: string | number, progressPercent: number, totalPages: number = 0) => {
@@ -1257,7 +1257,7 @@ export default function Reader() {
           >
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-serif font-bold text-lg text-[#111827]">
-                修改标题
+                Edit Title
               </h3>
               <button 
                 onClick={() => setIsEditingTitle(false)} 
@@ -1269,7 +1269,7 @@ export default function Reader() {
 
             <form onSubmit={handleSaveTitle}>
               <label className="block text-xs font-bold uppercase tracking-wider text-[#6B7280] mb-2">
-                标题 (Title)
+                Title
               </label>
               <input
                 type="text"
@@ -1277,7 +1277,7 @@ export default function Reader() {
                 onChange={(e) => setEditTitleInput(e.target.value)}
                 autoFocus
                 className="w-full px-4 py-3 bg-white border border-[#E5E5E5] rounded-xl text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#3D5A80] focus:border-transparent mb-6 transition-all font-serif"
-                placeholder="请输入新标题..."
+                placeholder="Enter new title..."
               />
 
               <div className="flex items-center justify-end gap-3">
@@ -1286,7 +1286,7 @@ export default function Reader() {
                   onClick={() => setIsEditingTitle(false)}
                   className="px-4 py-2 text-sm font-medium text-[#6B7280] hover:text-[#111827] rounded-xl hover:bg-black/5 transition-colors cursor-pointer"
                 >
-                  取消
+                  Cancel
                 </button>
                 <button
                   type="submit"
@@ -1294,7 +1294,7 @@ export default function Reader() {
                   className="px-5 py-2 text-sm font-semibold text-white bg-[#111827] hover:bg-[#3D5A80] rounded-xl shadow-sm transition-all disabled:opacity-50 flex items-center gap-2 cursor-pointer"
                 >
                   {isSavingTitle && <Loader2 className="w-4 h-4 animate-spin" />}
-                  保存修改
+                  Save Changes
                 </button>
               </div>
             </form>

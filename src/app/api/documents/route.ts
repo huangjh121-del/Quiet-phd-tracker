@@ -66,7 +66,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    let { id, type, title, author, fileName, fileKey, content, totalProgress, readingProgress, percentage } = body;
+    let { id, type, title, author, source, publishedAt, published_at, fileName, fileKey, content, totalProgress, readingProgress, percentage } = body;
 
     if (!type || !title) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400, headers: NO_CACHE_HEADERS });
@@ -76,13 +76,17 @@ export async function POST(req: Request) {
     const now = Date.now();
     const percentVal = typeof percentage === 'number' ? percentage : 0;
     const progressVal = readingProgress ? String(readingProgress) : '';
+    const sourceVal = source ? String(source) : '';
+    const pubDateVal = (publishedAt || published_at) ? String(publishedAt || published_at) : '';
 
     const sql = `
-      INSERT INTO documents (id, user_id, type, title, author, file_name, file_key, content, reading_progress, total_progress, percentage, created_at, last_read_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO documents (id, user_id, type, title, author, source, published_at, file_name, file_key, content, reading_progress, total_progress, percentage, created_at, last_read_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         title = excluded.title,
         author = excluded.author,
+        source = CASE WHEN excluded.source != '' THEN excluded.source ELSE documents.source END,
+        published_at = CASE WHEN excluded.published_at != '' THEN excluded.published_at ELSE documents.published_at END,
         content = CASE WHEN excluded.content != '' THEN excluded.content ELSE documents.content END,
         percentage = CASE WHEN excluded.percentage > 0 THEN excluded.percentage ELSE documents.percentage END,
         reading_progress = CASE WHEN excluded.reading_progress != '' THEN excluded.reading_progress ELSE documents.reading_progress END,
@@ -94,6 +98,8 @@ export async function POST(req: Request) {
       type,
       title,
       author || '',
+      sourceVal,
+      pubDateVal,
       fileName || '',
       fileKey || '',
       content || '',
@@ -105,7 +111,20 @@ export async function POST(req: Request) {
     ];
 
     await queryD1(sql, params);
-    return NextResponse.json({ success: true, id: docId, document: { id: docId, type, title, content, percentage: percentVal } }, { headers: NO_CACHE_HEADERS });
+    return NextResponse.json({ 
+      success: true, 
+      id: docId, 
+      document: { 
+        id: docId, 
+        type, 
+        title, 
+        author, 
+        source: sourceVal, 
+        published_at: pubDateVal, 
+        content, 
+        percentage: percentVal 
+      } 
+    }, { headers: NO_CACHE_HEADERS });
   } catch (error: any) {
     console.error('Create document error:', error);
     return NextResponse.json({ error: error.message }, { status: 500, headers: NO_CACHE_HEADERS });

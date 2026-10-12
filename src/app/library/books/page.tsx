@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   ArrowLeft, BookOpen, Loader2, Pencil, X, Trash2, Search, Plus, 
-  CheckCircle2, Bookmark, Sparkles, SlidersHorizontal, BookMarked
+  CheckCircle2, Bookmark, Sparkles, BookMarked
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -102,7 +102,8 @@ export default function BookShelf() {
   // Edit Modal State
   const [editingBook, setEditingBook] = useState<BookItem | null>(null);
   const [editTitleInput, setEditTitleInput] = useState('');
-  const [isSavingTitle, setIsSavingTitle] = useState(false);
+  const [editAuthorInput, setEditAuthorInput] = useState('');
+  const [isSavingDetails, setIsSavingDetails] = useState(false);
 
   // Upload input ref
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -184,12 +185,13 @@ export default function BookShelf() {
     loadBooks();
   }, [isLoaded, isSignedIn]);
 
-  // Rename title
-  const handleSaveTitle = async (e?: React.FormEvent) => {
+  // Rename title & author
+  const handleSaveDetails = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!editingBook || !editTitleInput.trim() || isSavingTitle) return;
-    setIsSavingTitle(true);
+    if (!editingBook || !editTitleInput.trim() || isSavingDetails) return;
+    setIsSavingDetails(true);
     const trimmedTitle = editTitleInput.trim();
+    const trimmedAuthor = editAuthorInput.trim();
 
     try {
       let token: string | null = null;
@@ -200,22 +202,25 @@ export default function BookShelf() {
       await fetch(`/api/documents/${editingBook.id}`, {
         method: 'PATCH',
         headers: patchHeaders,
-        body: JSON.stringify({ title: trimmedTitle }),
+        body: JSON.stringify({ 
+          title: trimmedTitle,
+          author: trimmedAuthor,
+        }),
       });
 
       const localLib = await localforage.getItem<any[]>('quiet_library') || [];
       const updatedLib = localLib.map(item => 
-        item.id === editingBook.id ? { ...item, title: trimmedTitle } : item
+        item.id === editingBook.id ? { ...item, title: trimmedTitle, author: trimmedAuthor } : item
       );
       await localforage.setItem('quiet_library', updatedLib);
 
-      setBooks(prev => prev.map(b => b.id === editingBook.id ? { ...b, title: trimmedTitle } : b));
+      setBooks(prev => prev.map(b => b.id === editingBook.id ? { ...b, title: trimmedTitle, author: trimmedAuthor } : b));
       setEditingBook(null);
     } catch (err) {
-      console.error('Failed to update title:', err);
-      alert('保存失败，请稍后重试');
+      console.error('Failed to update book details:', err);
+      alert('Failed to save changes. Please try again.');
     } finally {
-      setIsSavingTitle(false);
+      setIsSavingDetails(false);
     }
   };
 
@@ -223,7 +228,7 @@ export default function BookShelf() {
   const handleDeleteBook = async (e: React.MouseEvent, id: string, title: string) => {
     e.preventDefault();
     e.stopPropagation();
-    if (confirm(`确定要从书架中移除《${title}》吗？`)) {
+    if (confirm(`Are you sure you want to remove "${title}" from your book shelf?`)) {
       try {
         let token: string | null = null;
         try { token = await getToken(); } catch (e) {}
@@ -258,7 +263,7 @@ export default function BookShelf() {
     const isPdf = file.name.endsWith('.pdf');
 
     if (!isEpub && !isPdf) {
-      alert('仅支持上传 PDF 或 EPUB 格式的书籍文件');
+      alert('Only EPUB and PDF format files are supported.');
       setIsUploading(false);
       return;
     }
@@ -288,7 +293,7 @@ export default function BookShelf() {
       router.push(`/reader?id=${id}`);
     } catch (err) {
       console.error('Failed to import book:', err);
-      alert('书籍导入失败，请稍后重试');
+      alert('Failed to import book. Please try again.');
       setIsUploading(false);
     }
   };
@@ -344,7 +349,7 @@ export default function BookShelf() {
             <Link 
               href="/" 
               className="flex items-center justify-center w-10 h-10 rounded-full hover:bg-white hover:shadow-sm border border-transparent hover:border-[#E5E5E5] text-[#6B7280] hover:text-[#111827] transition-all"
-              title="返回首页"
+              title="Back to Dashboard"
             >
               <ArrowLeft className="w-5 h-5" />
             </Link>
@@ -353,10 +358,10 @@ export default function BookShelf() {
                 <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[#8C7A6B] bg-[#EFECE6] px-2 py-0.5 rounded">
                   Personal Library
                 </span>
-                <span className="text-xs text-[#8C7A6B] font-serif">· 典藏书架</span>
+                <span className="text-xs text-[#8C7A6B] font-serif">· The Stacks</span>
               </div>
               <h1 className="font-serif font-bold text-xl md:text-2xl text-[#111827]">
-                我的书房
+                Book Shelf
               </h1>
             </div>
           </div>
@@ -369,7 +374,7 @@ export default function BookShelf() {
               className="flex items-center gap-2 px-4 py-2 bg-[#1E293B] hover:bg-[#334155] text-white rounded-xl text-xs md:text-sm font-semibold shadow-sm hover:shadow transition-all cursor-pointer"
             >
               {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-              <span>导入书籍</span>
+              <span>Import Book</span>
             </button>
           </div>
         </div>
@@ -382,15 +387,15 @@ export default function BookShelf() {
           <div className="flex items-center gap-4 text-xs font-serif text-[#6B7280]">
             <div className="flex items-center gap-1.5 bg-white border border-[#E7E2D6] px-3 py-1.5 rounded-lg shadow-2xs">
               <BookOpen className="w-4 h-4 text-[#3D5A80]" />
-              <span>总藏书 <strong className="text-[#111827] font-sans font-bold">{stats.total}</strong> 本</span>
+              <span>Total Volumes <strong className="text-[#111827] font-sans font-bold">{stats.total}</strong></span>
             </div>
             <div className="flex items-center gap-1.5 bg-white border border-[#E7E2D6] px-3 py-1.5 rounded-lg shadow-2xs">
               <Bookmark className="w-4 h-4 text-[#D97706]" />
-              <span>正在研读 <strong className="text-[#111827] font-sans font-bold">{stats.reading}</strong> 本</span>
+              <span>Reading <strong className="text-[#111827] font-sans font-bold">{stats.reading}</strong></span>
             </div>
             <div className="flex items-center gap-1.5 bg-white border border-[#E7E2D6] px-3 py-1.5 rounded-lg shadow-2xs">
               <CheckCircle2 className="w-4 h-4 text-[#16A34A]" />
-              <span>已通读 <strong className="text-[#111827] font-sans font-bold">{stats.completed}</strong> 本</span>
+              <span>Completed <strong className="text-[#111827] font-sans font-bold">{stats.completed}</strong></span>
             </div>
           </div>
 
@@ -403,8 +408,8 @@ export default function BookShelf() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="搜索藏书书名..."
-                className="pl-9 pr-3 py-1.5 bg-white border border-[#E7E2D6] rounded-lg text-xs md:text-sm text-[#111827] placeholder-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#3D5A80] transition-all w-44 md:w-56"
+                placeholder="Search by title or author..."
+                className="pl-9 pr-3 py-1.5 bg-white border border-[#E7E2D6] rounded-lg text-xs md:text-sm text-[#111827] placeholder-[#9CA3AF] focus:outline-none focus:ring-2 focus:ring-[#3D5A80] transition-all w-48 md:w-60"
               />
               {searchQuery && (
                 <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-[#9CA3AF] hover:text-[#111827]">
@@ -423,7 +428,7 @@ export default function BookShelf() {
                     : 'text-[#6B7280] hover:text-[#111827]'
                 }`}
               >
-                全部 ({books.length})
+                All ({books.length})
               </button>
               <button
                 onClick={() => setActiveTab('reading')}
@@ -433,7 +438,7 @@ export default function BookShelf() {
                     : 'text-[#6B7280] hover:text-[#111827]'
                 }`}
               >
-                在读 ({stats.reading})
+                Reading ({stats.reading})
               </button>
               <button
                 onClick={() => setActiveTab('completed')}
@@ -443,7 +448,7 @@ export default function BookShelf() {
                     : 'text-[#6B7280] hover:text-[#111827]'
                 }`}
               >
-                已读 ({stats.completed})
+                Completed ({stats.completed})
               </button>
             </div>
           </div>
@@ -455,23 +460,23 @@ export default function BookShelf() {
         {isLoading ? (
           <div className="flex flex-col items-center justify-center py-28 text-[#6B7280] space-y-4">
             <Loader2 className="w-10 h-10 animate-spin text-[#3D5A80]" />
-            <p className="font-serif text-sm">正在开启书房藏书阁...</p>
+            <p className="font-serif text-sm">Opening personal library...</p>
           </div>
         ) : filteredBooks.length === 0 ? (
           <div className="text-center py-24 bg-white/70 border border-[#E7E2D6] rounded-3xl max-w-lg mx-auto shadow-sm p-8">
             <div className="w-16 h-16 rounded-full bg-[#EFECE6] flex items-center justify-center mx-auto mb-4 text-[#8C7A6B]">
               <BookOpen className="w-8 h-8" />
             </div>
-            <h3 className="font-serif font-bold text-lg text-[#111827] mb-2">书架尚无藏书</h3>
+            <h3 className="font-serif font-bold text-lg text-[#111827] mb-2">No Books Found</h3>
             <p className="text-xs md:text-sm text-[#6B7280] mb-6 leading-relaxed">
-              {searchQuery ? '没有找到符合搜索条件的书籍。' : '上传您的 EPUB 或 PDF 电子书，享受沉浸式精装书房阅读体验。'}
+              {searchQuery ? 'No books matched your search query.' : 'Upload an EPUB or PDF book to build your personal bookshelf.'}
             </p>
             <button
               onClick={() => fileInputRef.current?.click()}
               className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#1E293B] text-white rounded-xl text-sm font-semibold shadow hover:bg-[#334155] transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>立即导入第一本书</span>
+              <span>Import Your First Book</span>
             </button>
           </div>
         ) : (
@@ -534,12 +539,12 @@ export default function BookShelf() {
                               {book.isCompleted ? (
                                 <div className="flex items-center gap-1.5 text-[10px] font-bold text-[#4ADE80]">
                                   <CheckCircle2 className="w-3.5 h-3.5" />
-                                  <span>已读完</span>
+                                  <span>Completed</span>
                                 </div>
                               ) : book.progress > 0 ? (
                                 <div className="w-full">
                                   <div className="flex justify-between text-[9px] font-sans font-semibold text-white/70 mb-1">
-                                    <span>进度</span>
+                                    <span>Progress</span>
                                     <span>{book.progress}%</span>
                                   </div>
                                   <div className="w-full h-1 bg-black/40 rounded-full overflow-hidden">
@@ -552,7 +557,7 @@ export default function BookShelf() {
                               ) : (
                                 <div className="flex items-center gap-1 text-[9px] font-sans tracking-wider uppercase text-white/50">
                                   <Sparkles className="w-3 h-3 text-amber-300/70" />
-                                  <span>待开启</span>
+                                  <span>Unread</span>
                                 </div>
                               )}
                             </div>
@@ -573,9 +578,10 @@ export default function BookShelf() {
                               e.stopPropagation();
                               setEditingBook(book);
                               setEditTitleInput(book.title);
+                              setEditAuthorInput(book.author || '');
                             }}
                             className="p-1.5 text-[#6B7280] hover:text-[#3D5A80] hover:bg-[#F3F4F6] rounded-lg transition-colors cursor-pointer"
-                            title="修改书名"
+                            title="Edit book details"
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
@@ -583,7 +589,7 @@ export default function BookShelf() {
                             type="button"
                             onClick={(e) => handleDeleteBook(e, book.id, book.title)}
                             className="p-1.5 text-[#6B7280] hover:text-[#EF4444] hover:bg-[#FEF2F2] rounded-lg transition-colors cursor-pointer"
-                            title="从书架移除"
+                            title="Remove from shelf"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -608,7 +614,7 @@ export default function BookShelf() {
         )}
       </main>
 
-      {/* Edit Title Modal */}
+      {/* Edit Title & Author Modal */}
       {editingBook && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#111827]/40 backdrop-blur-sm animate-in fade-in duration-200">
           <div 
@@ -619,7 +625,7 @@ export default function BookShelf() {
               <div className="flex items-center gap-2">
                 <BookMarked className="w-5 h-5 text-[#3D5A80]" />
                 <h3 className="font-serif font-bold text-lg text-[#111827]">
-                  修改书名
+                  Edit Book Details
                 </h3>
               </div>
               <button 
@@ -630,34 +636,50 @@ export default function BookShelf() {
               </button>
             </div>
 
-            <form onSubmit={handleSaveTitle}>
-              <label className="block text-xs font-bold uppercase tracking-wider text-[#6B7280] mb-2">
-                书名 (Book Title)
-              </label>
-              <input
-                type="text"
-                value={editTitleInput}
-                onChange={(e) => setEditTitleInput(e.target.value)}
-                autoFocus
-                className="w-full px-4 py-3 bg-white border border-[#E5E5E5] rounded-xl text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#3D5A80] focus:border-transparent mb-6 transition-all font-serif"
-                placeholder="请输入新书名..."
-              />
+            <form onSubmit={handleSaveDetails} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-[#6B7280] mb-2">
+                  Book Title
+                </label>
+                <input
+                  type="text"
+                  value={editTitleInput}
+                  onChange={(e) => setEditTitleInput(e.target.value)}
+                  autoFocus
+                  required
+                  className="w-full px-4 py-2.5 bg-white border border-[#E5E5E5] rounded-xl text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#3D5A80] focus:border-transparent transition-all font-serif"
+                  placeholder="Enter book title..."
+                />
+              </div>
 
-              <div className="flex items-center justify-end gap-3">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-[#6B7280] mb-2">
+                  Author (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={editAuthorInput}
+                  onChange={(e) => setEditAuthorInput(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-white border border-[#E5E5E5] rounded-xl text-sm text-[#111827] focus:outline-none focus:ring-2 focus:ring-[#3D5A80] focus:border-transparent transition-all font-serif"
+                  placeholder="e.g. Robert M. Sapolsky"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setEditingBook(null)}
                   className="px-4 py-2 text-sm font-medium text-[#6B7280] hover:text-[#111827] rounded-xl hover:bg-black/5 transition-colors cursor-pointer"
                 >
-                  取消
+                  Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={isSavingTitle || !editTitleInput.trim()}
+                  disabled={isSavingDetails || !editTitleInput.trim()}
                   className="px-5 py-2 text-sm font-semibold text-white bg-[#111827] hover:bg-[#3D5A80] rounded-xl shadow-sm transition-all disabled:opacity-50 flex items-center gap-2 cursor-pointer"
                 >
-                  {isSavingTitle && <Loader2 className="w-4 h-4 animate-spin" />}
-                  保存修改
+                  {isSavingDetails && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Save Changes
                 </button>
               </div>
             </form>
