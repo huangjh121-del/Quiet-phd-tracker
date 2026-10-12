@@ -8,7 +8,9 @@ export async function PATCH(
   try {
     const { id } = await params;
     const { userId } = await auth();
-    const uid = userId || 'public';
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     const { note } = await req.json();
 
     const ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -20,8 +22,8 @@ export async function PATCH(
     }
 
     const now = Date.now();
-    const sql = "UPDATE reading_notes SET note = ?, updated_at = ? WHERE id = ? AND (user_id = ? OR user_id = 'public')";
-    const sqlParams = [note ? note.trim() : '', now, id, uid];
+    const sql = "UPDATE reading_notes SET note = ?, updated_at = ? WHERE id = ? AND user_id = ?";
+    const sqlParams = [note ? note.trim() : '', now, id, userId];
 
     const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/d1/database/${DB_ID}/query`, {
       method: 'POST',
@@ -51,7 +53,9 @@ export async function DELETE(
   try {
     const { id } = await params;
     const { userId } = await auth();
-    const uid = userId || 'public';
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     const ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
     const DB_ID = process.env.CLOUDFLARE_DATABASE_ID;
@@ -61,8 +65,8 @@ export async function DELETE(
       return NextResponse.json({ error: 'Config missing' }, { status: 500 });
     }
 
-    const sql = "DELETE FROM reading_notes WHERE id = ? AND (user_id = ? OR user_id = 'public')";
-    const sqlParams = [id, uid];
+    const sql = "DELETE FROM reading_notes WHERE id = ? AND user_id = ?";
+    const sqlParams = [id, userId];
 
     const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/d1/database/${DB_ID}/query`, {
       method: 'POST',

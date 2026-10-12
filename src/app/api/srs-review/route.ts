@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { auth } from '@clerk/nextjs/server';
 
 // SM-2 Algorithm implementation
 function calculateSM2(quality: number, repetitions: number, easeFactor: number, interval: number) {
@@ -27,6 +28,11 @@ function calculateSM2(quality: number, repetitions: number, easeFactor: number, 
 
 export async function POST(req: Request) {
   try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { id, type, quality, currentEase, currentReps, currentInterval, tzOffset } = await req.json();
     if (!id || !type || quality === undefined) return NextResponse.json({ error: 'Missing data' }, { status: 400 });
 
@@ -58,8 +64,8 @@ export async function POST(req: Request) {
     const repColumn = type === 'word' ? 'repetition' : 'repetitions';
 
     const payload = {
-      sql: `UPDATE ${tableName} SET next_review_at = ?, interval = ?, ease_factor = ?, ${repColumn} = ? WHERE ${idColumn} = ?`,
-      params: [nextReviewAt, newInterval, newEaseFactor, newRepetitions, id]
+      sql: `UPDATE ${tableName} SET next_review_at = ?, interval = ?, ease_factor = ?, ${repColumn} = ? WHERE ${idColumn} = ? AND user_id = ?`,
+      params: [nextReviewAt, newInterval, newEaseFactor, newRepetitions, id, userId]
     };
 
     const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/d1/database/${DB_ID}/query`, {

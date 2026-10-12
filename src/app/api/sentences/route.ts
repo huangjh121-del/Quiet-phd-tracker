@@ -13,6 +13,9 @@ export async function GET(req: Request) {
   try {
     const _url = new URL(req.url);
     const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ sentences: [] }, { headers: NO_CACHE_HEADERS });
+    }
 
     const ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
     const DB_ID = process.env.CLOUDFLARE_DATABASE_ID;
@@ -22,15 +25,10 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Config missing', sentences: [] }, { status: 500, headers: NO_CACHE_HEADERS });
     }
 
-    const payload = userId 
-      ? { 
-          sql: "SELECT * FROM saved_sentences WHERE user_id = ? OR user_id = 'public' ORDER BY saved_at DESC",
-          params: [userId]
-        }
-      : { 
-          sql: "SELECT * FROM saved_sentences WHERE user_id = 'public' ORDER BY saved_at DESC",
-          params: []
-        };
+    const payload = { 
+      sql: "SELECT * FROM saved_sentences WHERE user_id = ? ORDER BY saved_at DESC",
+      params: [userId]
+    };
 
     const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/d1/database/${DB_ID}/query`, {
       method: 'POST',

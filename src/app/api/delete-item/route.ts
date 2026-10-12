@@ -4,7 +4,9 @@ import { auth } from '@clerk/nextjs/server';
 export async function POST(req: Request) {
   try {
     const { userId } = await auth();
-    const uid = userId || 'public';
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     const { type, id } = await req.json();
     if (!type || !id) return NextResponse.json({ error: 'Missing data' }, { status: 400 });
@@ -31,10 +33,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
     }
 
-    // Match by ID / word and ensure user ownership (or public records)
+    // Match by ID / word and ensure user ownership
     const payload = {
-      sql: `DELETE FROM ${tableName} WHERE ${idColumn} = ? AND (user_id = ? OR user_id = 'public')`,
-      params: [id, uid]
+      sql: `DELETE FROM ${tableName} WHERE ${idColumn} = ? AND user_id = ?`,
+      params: [id, userId]
     };
 
     const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/d1/database/${DB_ID}/query`, {

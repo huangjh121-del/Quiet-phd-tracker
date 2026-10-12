@@ -18,8 +18,8 @@ export async function POST(request: Request) {
     const idColumn = type === 'phrase' ? 'id' : 'word';
 
     const payload = {
-      sql: `UPDATE ${tableName} SET ${type === "phrase" ? "repetitions" : "repetition"} = 1, next_review_at = ? WHERE ${idColumn} = ?`,
-      params: [nextReviewAt, id]
+      sql: `UPDATE ${tableName} SET ${type === "phrase" ? "repetitions" : "repetition"} = 1, next_review_at = ? WHERE ${idColumn} = ? AND user_id = ?`,
+      params: [nextReviewAt, id, userId]
     };
 
     const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/d1/database/${DB_ID}/query`, {

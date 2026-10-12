@@ -3,22 +3,37 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Loader2, PlayCircle, BookOpen, GraduationCap, Flame, Trash2 } from "lucide-react";
 import Link from 'next/link';
+import { useAuth } from '@clerk/nextjs';
 import { useReadingTimer } from '@/lib/readingTracker';
 
 export default function WordsLibrary() {
   useReadingTimer();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const [items, setItems] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/library-items?type=word&t=' + Date.now())
-      .then(res => res.json())
-      .then(data => {
-        if (data.items) setItems(data.items);
-        setIsLoading(false);
-      })
-      .catch(err => setIsLoading(false));
-  }, []);
+    if (!isLoaded) return;
+    if (!isSignedIn) {
+      setItems([]);
+      setIsLoading(false);
+      return;
+    }
+    (async () => {
+      let token: string | null = null;
+      try { token = await getToken(); } catch (e) {}
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      fetch('/api/library-items?type=word&t=' + Date.now(), { headers })
+        .then(res => res.json())
+        .then(data => {
+          if (data.items) setItems(data.items);
+          setIsLoading(false);
+        })
+        .catch(err => setIsLoading(false));
+    })();
+  }, [isLoaded, isSignedIn]);
 
   
   const handleDelete = async (word: string) => {

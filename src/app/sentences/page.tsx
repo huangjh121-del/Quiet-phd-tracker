@@ -4,55 +4,72 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Loader2, Quote, BookOpen, Trash2, ArrowUpRight } from "lucide-react";
 import Link from 'next/link';
 import localforage from 'localforage';
+import { useAuth } from '@clerk/nextjs';
 import { useReadingTimer } from '@/lib/readingTracker';
 
 export default function SentencesPage() {
   useReadingTimer();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const [sentences, setSentences] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [library, setLibrary] = useState<any[]>([]);
 
   useEffect(() => {
-    // 1. Fetch sentences from D1
-    fetch('/api/sentences?t=' + Date.now())
-      .then(res => res.json())
-      .then(data => {
-        if (data.sentences) {
-          const seen = new Set<string>();
-          const unique = data.sentences.filter((s: any) => {
-            const key = (s.sentence || '').trim().toLowerCase();
-            if (!key || seen.has(key)) return false;
-            seen.add(key);
-            return true;
-          });
-          setSentences(unique);
-        }
-        setIsLoading(false);
-      })
-      .catch(err => {
-        console.error("Failed to load sentences", err);
-        setIsLoading(false);
-      });
+    if (!isLoaded) return;
+    if (!isSignedIn) {
+      setSentences([]);
+      setLibrary([]);
+      setIsLoading(false);
+      return;
+    }
 
-    // 2. Fetch library from both Cloudflare D1 and localforage
-    Promise.all([
-      fetch('/api/documents?t=' + Date.now()).then(r => r.json()).catch(() => ({ documents: [] })),
-      localforage.getItem<any[]>('quiet_library').catch(() => [])
-    ]).then(([dRes, localLib]) => {
-      const cloudDocs = (dRes.documents || []).map((d: any) => ({
-        id: String(d.id),
-        title: d.title,
-      }));
-      const localDocs = (localLib || []).map((d: any) => ({
-        id: String(d.id),
-        title: d.title,
-      }));
-      const map = new Map<string, any>();
-      localDocs.forEach((d: any) => map.set(d.id, d));
-      cloudDocs.forEach((d: any) => map.set(d.id, d));
-      setLibrary(Array.from(map.values()));
-    });
-  }, []);
+    (async () => {
+      let token: string | null = null;
+      try { token = await getToken(); } catch (e) {}
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      // 1. Fetch sentences from D1
+      fetch('/api/sentences?t=' + Date.now(), { headers })
+        .then(res => res.json())
+        .then(data => {
+          if (data.sentences) {
+            const seen = new Set<string>();
+            const unique = data.sentences.filter((s: any) => {
+              const key = (s.sentence || '').trim().toLowerCase();
+              if (!key || seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
+            setSentences(unique);
+          }
+          setIsLoading(false);
+        })
+        .catch(err => {
+          console.error("Failed to load sentences", err);
+          setIsLoading(false);
+        });
+
+      // 2. Fetch library from both Cloudflare D1 and localforage
+      Promise.all([
+        fetch('/api/documents?t=' + Date.now(), { headers }).then(r => r.json()).catch(() => ({ documents: [] })),
+        localforage.getItem<any[]>('quiet_library').catch(() => [])
+      ]).then(([dRes, localLib]) => {
+        const cloudDocs = (dRes.documents || []).map((d: any) => ({
+          id: String(d.id),
+          title: d.title,
+        }));
+        const localDocs = (localLib || []).map((d: any) => ({
+          id: String(d.id),
+          title: d.title,
+        }));
+        const map = new Map<string, any>();
+        localDocs.forEach((d: any) => map.set(d.id, d));
+        cloudDocs.forEach((d: any) => map.set(d.id, d));
+        setLibrary(Array.from(map.values()));
+      });
+    })();
+  }, [isLoaded, isSignedIn]);
 
   const findBookForSentence = (item: any) => {
     // 1. Match by book_id if available

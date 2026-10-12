@@ -46,6 +46,26 @@ export default function Home() {
   const [isSavingTitle, setIsSavingTitle] = useState(false);
 
   useEffect(() => {
+    if (!isLoaded) return;
+
+    if (!isSignedIn) {
+      setLibStats({ words: 0, phrases: 0, sentences: 0, notes: 0, dueWords: 0, duePhrases: 0 });
+      setLibrary([]);
+      setReadingStats({ todayMins: 0, streak: 0, activeDays: [], history: {} });
+      const now = new Date();
+      now.setHours(0,0,0,0);
+      const days = [];
+      const startDate = new Date(now);
+      startDate.setDate(startDate.getDate() - 29);
+      for (let i = 0; i < 30; i++) {
+        const d = new Date(startDate);
+        d.setDate(d.getDate() + i);
+        days.push(d.toDateString());
+      }
+      setDisplayDays(days);
+      return;
+    }
+
     loadLibrary();
     
     // Fetch D1 stats with token
@@ -152,6 +172,10 @@ export default function Home() {
   }, [isLoaded, isSignedIn]);
 
   const loadLibrary = async () => {
+    if (!isSignedIn) {
+      setLibrary([]);
+      return;
+    }
     try {
       let token: string | null = null;
       try { token = await getToken(); } catch (e) {}

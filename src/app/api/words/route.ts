@@ -20,6 +20,9 @@ export async function GET(req: Request) {
     }
 
     const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ items: [] }, { headers: NO_CACHE_HEADERS });
+    }
 
     const { searchParams } = new URL(req.url);
     const beforeParam = searchParams.get('before');
@@ -30,16 +33,12 @@ export async function GET(req: Request) {
       cutoff = endOfToday.getTime();
     }
 
-    // Only return items that have already been learned (repetition > 0) and are due on or before cutoff
-    const sqlWords = userId
-      ? "SELECT * FROM saved_words WHERE (user_id = ? OR user_id = 'public') AND (repetition > 0) AND next_review_at <= ? ORDER BY next_review_at ASC"
-      : "SELECT * FROM saved_words WHERE user_id = 'public' AND (repetition > 0) AND next_review_at <= ? ORDER BY next_review_at ASC";
-    const paramsWords = userId ? [userId, cutoff] : [cutoff];
+    // Only return items that have already been learned (repetition > 0) and are due on or before cutoff for this user
+    const sqlWords = "SELECT * FROM saved_words WHERE user_id = ? AND (repetition > 0) AND next_review_at <= ? ORDER BY next_review_at ASC";
+    const paramsWords = [userId, cutoff];
 
-    const sqlPhrases = userId
-      ? "SELECT * FROM saved_phrases WHERE (user_id = ? OR user_id = 'public') AND (repetitions > 0) AND next_review_at <= ? ORDER BY next_review_at ASC"
-      : "SELECT * FROM saved_phrases WHERE user_id = 'public' AND (repetitions > 0) AND next_review_at <= ? ORDER BY next_review_at ASC";
-    const paramsPhrases = userId ? [userId, cutoff] : [cutoff];
+    const sqlPhrases = "SELECT * FROM saved_phrases WHERE user_id = ? AND (repetitions > 0) AND next_review_at <= ? ORDER BY next_review_at ASC";
+    const paramsPhrases = [userId, cutoff];
 
     const fetchD1 = (payload: any) => fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/d1/database/${DB_ID}/query`, {
       method: 'POST',

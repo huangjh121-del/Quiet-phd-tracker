@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Loader2, BookOpen, Trash2, ArrowUpRight, Search, Pencil, Check, X, Highlighter, MessageSquare } from "lucide-react";
 import Link from 'next/link';
 import localforage from 'localforage';
+import { useAuth } from '@clerk/nextjs';
 import { useReadingTimer } from '@/lib/readingTracker';
 
 interface ReadingNote {
@@ -20,6 +21,7 @@ interface ReadingNote {
 
 export default function ReadingNotesPage() {
   useReadingTimer();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const [notes, setNotes] = useState<ReadingNote[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -28,23 +30,34 @@ export default function ReadingNotesPage() {
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   useEffect(() => {
-    // 1. Fetch notes from D1 API
-    fetch('/api/notes?t=' + Date.now())
-      .then(res => res.json())
-      .then(data => {
-        if (data.notes) {
-          setNotes(data.notes);
-          localforage.setItem('quiet_notes', data.notes).catch(() => {});
-        }
-        setIsLoading(false);
-      })
-      .catch(async () => {
-        // Fallback to local
-        const local = await localforage.getItem<ReadingNote[]>('quiet_notes');
-        if (local) setNotes(local);
-        setIsLoading(false);
-      });
-  }, []);
+    if (!isLoaded) return;
+    if (!isSignedIn) {
+      setNotes([]);
+      setIsLoading(false);
+      return;
+    }
+
+    (async () => {
+      let token: string | null = null;
+      try { token = await getToken(); } catch (e) {}
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      // 1. Fetch notes from D1 API
+      fetch('/api/notes?t=' + Date.now(), { headers })
+        .then(res => res.json())
+        .then(data => {
+          if (data.notes) {
+            setNotes(data.notes);
+            localforage.setItem('quiet_notes', data.notes).catch(() => {});
+          }
+          setIsLoading(false);
+        })
+        .catch(async () => {
+          setIsLoading(false);
+        });
+    })();
+  }, [isLoaded, isSignedIn]);
 
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this reading note?')) return;

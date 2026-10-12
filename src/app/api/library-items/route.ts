@@ -12,7 +12,9 @@ const NO_CACHE_HEADERS = {
 export async function GET(req: Request) {
   try {
     const { userId } = await auth();
-    const uid = userId || 'public';
+    if (!userId) {
+      return NextResponse.json({ items: [] }, { headers: NO_CACHE_HEADERS });
+    }
 
     const { searchParams } = new URL(req.url);
     const type = searchParams.get('type') || 'word';
@@ -26,15 +28,10 @@ export async function GET(req: Request) {
     }
 
     const tableName = type === 'word' ? 'saved_words' : 'saved_phrases';
-    const payload = userId 
-      ? {
-          sql: `SELECT * FROM ${tableName} WHERE user_id = ? OR user_id = 'public' ORDER BY saved_at DESC`,
-          params: [userId]
-        }
-      : {
-          sql: `SELECT * FROM ${tableName} WHERE user_id = 'public' ORDER BY saved_at DESC`,
-          params: []
-        };
+    const payload = {
+      sql: `SELECT * FROM ${tableName} WHERE user_id = ? ORDER BY saved_at DESC`,
+      params: [userId]
+    };
 
     const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/d1/database/${DB_ID}/query`, {
       method: 'POST',

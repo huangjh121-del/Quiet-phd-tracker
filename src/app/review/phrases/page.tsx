@@ -3,31 +3,47 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Loader2, BookOpen, GraduationCap, Flame, Trash2, PenLine, Check } from "lucide-react";
 import Link from 'next/link';
+import { useAuth } from '@clerk/nextjs';
 import { useReadingTimer } from '@/lib/readingTracker';
 
 export default function WordsLibrary() {
   useReadingTimer();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const [items, setItems] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [saveStatus, setSaveStatus] = useState<Record<string, 'idle' | 'saving' | 'saved'>>({});
 
   useEffect(() => {
-    fetch('/api/library-items?type=phrase&t=' + Date.now())
-      .then(res => res.json())
-      .then(data => {
-        if (data.items) {
-          setItems(data.items);
-          const initialNotes: Record<string, string> = {};
-          data.items.forEach((item: any) => {
-            initialNotes[item.id] = item.meaning || '';
-          });
-          setNotes(initialNotes);
-        }
-        setIsLoading(false);
-      })
-      .catch(err => setIsLoading(false));
-  }, []);
+    if (!isLoaded) return;
+    if (!isSignedIn) {
+      setItems([]);
+      setNotes({});
+      setIsLoading(false);
+      return;
+    }
+    (async () => {
+      let token: string | null = null;
+      try { token = await getToken(); } catch (e) {}
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      fetch('/api/library-items?type=phrase&t=' + Date.now(), { headers })
+        .then(res => res.json())
+        .then(data => {
+          if (data.items) {
+            setItems(data.items);
+            const initialNotes: Record<string, string> = {};
+            data.items.forEach((item: any) => {
+              initialNotes[item.id] = item.meaning || '';
+            });
+            setNotes(initialNotes);
+          }
+          setIsLoading(false);
+        })
+        .catch(err => setIsLoading(false));
+    })();
+  }, [isLoaded, isSignedIn]);
 
   const handleSaveMeaning = async (id: string, phrase: string) => {
     const currentMeaning = notes[id] !== undefined ? notes[id] : (items.find(i => i.id === id)?.meaning || '');

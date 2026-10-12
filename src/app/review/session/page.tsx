@@ -6,10 +6,12 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Loader2, PlayCircle, FileText, PenLine, Check } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { useAuth } from '@clerk/nextjs';
 import { useReadingTimer } from '@/lib/readingTracker';
 
 function MainContent() {
   useReadingTimer();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const searchParams = useSearchParams();
   const reviewType = searchParams.get('type') || 'word';
   const [items, setItems] = useState<any[]>([]);
@@ -23,19 +25,32 @@ function MainContent() {
   const [isSavingNote, setIsSavingNote] = useState(false);
 
   useEffect(() => {
-    const endOfToday = new Date();
-    endOfToday.setHours(23, 59, 59, 999);
-    fetch(`/api/words?before=${endOfToday.getTime()}&t=${Date.now()}`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.items) setItems(data.items.filter((i: any) => i.type === reviewType));
-        setIsLoading(false);
-      })
-      .catch(err => {
-        console.error("Failed to load review items", err);
-        setIsLoading(false);
-      });
-  }, [reviewType]);
+    if (!isLoaded) return;
+    if (!isSignedIn) {
+      setItems([]);
+      setIsLoading(false);
+      return;
+    }
+    (async () => {
+      let token: string | null = null;
+      try { token = await getToken(); } catch (e) {}
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const endOfToday = new Date();
+      endOfToday.setHours(23, 59, 59, 999);
+      fetch(`/api/words?before=${endOfToday.getTime()}&t=${Date.now()}`, { headers })
+        .then(res => res.json())
+        .then(data => {
+          if (data.items) setItems(data.items.filter((i: any) => i.type === reviewType));
+          setIsLoading(false);
+        })
+        .catch(err => {
+          console.error("Failed to load review items", err);
+          setIsLoading(false);
+        });
+    })();
+  }, [reviewType, isLoaded, isSignedIn]);
 
   const currentItem = items[currentIndex];
 

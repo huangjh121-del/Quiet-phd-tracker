@@ -112,6 +112,12 @@ export default function BookShelf() {
   // Fetch books
   useEffect(() => {
     async function loadBooks() {
+      if (!isLoaded) return;
+      if (!isSignedIn) {
+        setBooks([]);
+        setIsLoading(false);
+        return;
+      }
       try {
         let token: string | null = null;
         try { token = await getToken(); } catch (e) {}

@@ -11,7 +11,9 @@ const NO_CACHE_HEADERS = {
 export async function GET(req: Request) {
   try {
     const { userId } = await auth();
-    const uid = userId || 'public';
+    if (!userId) {
+      return NextResponse.json({ notes: [] }, { headers: NO_CACHE_HEADERS });
+    }
     const { searchParams } = new URL(req.url);
     const bookId = searchParams.get('bookId');
 
@@ -23,8 +25,8 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Config missing', notes: [] }, { status: 500, headers: NO_CACHE_HEADERS });
     }
 
-    let sql = "SELECT * FROM reading_notes WHERE (user_id = ? OR user_id = 'public')";
-    const params: any[] = [uid];
+    let sql = "SELECT * FROM reading_notes WHERE user_id = ?";
+    const params: any[] = [userId];
 
     if (bookId) {
       sql += " AND book_id = ?";
@@ -57,7 +59,9 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const { userId } = await auth();
-    const uid = userId || 'public';
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     const { bookId, sourceTitle, highlightedText, note, location } = await req.json();
     if (!highlightedText || !highlightedText.trim()) {
@@ -81,7 +85,7 @@ export async function POST(req: Request) {
     `;
     const params = [
       id,
-      uid,
+      userId,
       bookId || '',
       sourceTitle || 'Untitled Document',
       highlightedText.trim(),
@@ -109,7 +113,7 @@ export async function POST(req: Request) {
       success: true,
       note: {
         id,
-        user_id: uid,
+        user_id: userId,
         book_id: bookId || '',
         source_title: sourceTitle || 'Untitled Document',
         highlighted_text: highlightedText.trim(),

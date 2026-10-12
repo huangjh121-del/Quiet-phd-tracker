@@ -106,6 +106,12 @@ export default function ArticleShelf() {
   // Fetch articles
   useEffect(() => {
     async function loadArticles() {
+      if (!isLoaded) return;
+      if (!isSignedIn) {
+        setArticles([]);
+        setIsLoading(false);
+        return;
+      }
       try {
         let token: string | null = null;
         try { token = await getToken(); } catch (e) {}

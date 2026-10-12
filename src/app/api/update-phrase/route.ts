@@ -4,7 +4,9 @@ import { auth } from '@clerk/nextjs/server';
 export async function POST(req: Request) {
   try {
     const { userId } = await auth();
-    const uid = userId || 'public';
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
     const { id, phrase, meaning } = await req.json();
 
     if (!id && !phrase) {
@@ -25,11 +27,11 @@ export async function POST(req: Request) {
     let params: any[] = [];
 
     if (id) {
-      sql = "UPDATE saved_phrases SET meaning = ? WHERE id = ? AND (user_id = ? OR user_id = 'public')";
-      params = [cleanMeaning, id, uid];
+      sql = "UPDATE saved_phrases SET meaning = ? WHERE id = ? AND user_id = ?";
+      params = [cleanMeaning, id, userId];
     } else {
-      sql = "UPDATE saved_phrases SET meaning = ? WHERE LOWER(TRIM(phrase)) = LOWER(TRIM(?)) AND (user_id = ? OR user_id = 'public')";
-      params = [cleanMeaning, phrase, uid];
+      sql = "UPDATE saved_phrases SET meaning = ? WHERE LOWER(TRIM(phrase)) = LOWER(TRIM(?)) AND user_id = ?";
+      params = [cleanMeaning, phrase, userId];
     }
 
     const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/d1/database/${DB_ID}/query`, {

@@ -4,7 +4,9 @@ import { auth } from '@clerk/nextjs/server';
 export async function POST(request: Request) {
   try {
     const { userId } = await auth();
-    const uid = userId || 'public';
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     const body = await request.json();
     const { word, htmlDefinition, context } = body;
@@ -23,10 +25,10 @@ export async function POST(request: Request) {
 
     const cleanWord = word.trim().toLowerCase();
 
-    // Check if word already saved
+    // Check if word already saved for this user
     const checkPayload = {
-      sql: "SELECT word FROM saved_words WHERE LOWER(TRIM(word)) = ? AND (user_id = ? OR user_id = 'public') LIMIT 1",
-      params: [cleanWord, uid]
+      sql: "SELECT word FROM saved_words WHERE LOWER(TRIM(word)) = ? AND user_id = ? LIMIT 1",
+      params: [cleanWord, userId]
     };
     const checkRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/d1/database/${DB_ID}/query`, {
       method: 'POST',
@@ -42,8 +44,8 @@ export async function POST(request: Request) {
     const nextReviewAt = now;
     
     const payload = {
-      sql: "INSERT INTO saved_words (word, html_definition, context, saved_at, next_review_at, interval, repetition, ease_factor, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(word) DO NOTHING",
-      params: [cleanWord, htmlDefinition || "", (context || "").trim(), now, nextReviewAt, 1, 0, 2.5, uid]
+      sql: "INSERT INTO saved_words (word, html_definition, context, saved_at, next_review_at, interval, repetition, ease_factor, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(word, user_id) DO NOTHING",
+      params: [cleanWord, htmlDefinition || "", (context || "").trim(), now, nextReviewAt, 1, 0, 2.5, userId]
     };
 
     const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/d1/database/${DB_ID}/query`, {

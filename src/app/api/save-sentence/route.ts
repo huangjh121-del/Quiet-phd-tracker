@@ -5,7 +5,9 @@ import crypto from 'crypto';
 export async function POST(req: Request) {
   try {
     const { userId } = await auth();
-    const uid = userId || 'public';
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     const { sentence, sourceTitle, bookId } = await req.json();
     if (!sentence) return NextResponse.json({ error: 'Missing sentence' }, { status: 400 });
@@ -20,10 +22,10 @@ export async function POST(req: Request) {
 
     const cleanSentence = sentence.trim();
 
-    // Check for duplicates first (case-insensitive & whitespace trimmed)
+    // Check for duplicates first (case-insensitive & whitespace trimmed per user)
     const checkPayload = {
-      sql: "SELECT id FROM saved_sentences WHERE LOWER(TRIM(sentence)) = LOWER(TRIM(?)) AND (user_id = ? OR user_id = 'public') LIMIT 1",
-      params: [cleanSentence, uid]
+      sql: "SELECT id FROM saved_sentences WHERE LOWER(TRIM(sentence)) = LOWER(TRIM(?)) AND user_id = ? LIMIT 1",
+      params: [cleanSentence, userId]
     };
     const checkRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/d1/database/${DB_ID}/query`, {
       method: 'POST',
@@ -40,7 +42,7 @@ export async function POST(req: Request) {
     
     const payload = {
       sql: "INSERT INTO saved_sentences (id, sentence, source_title, book_id, saved_at, user_id) VALUES (?, ?, ?, ?, ?, ?)",
-      params: [id, cleanSentence, sourceTitle || 'Unknown', bookId || null, now, uid]
+      params: [id, cleanSentence, sourceTitle || 'Unknown', bookId || null, now, userId]
     };
 
     const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/d1/database/${DB_ID}/query`, {
