@@ -1,9 +1,11 @@
 'use client';
 
-import dynamic from 'next/dynamic';
+export const dynamic = 'force-dynamic';
+
+import nextDynamic from 'next/dynamic';
 import { Loader2 } from 'lucide-react';
 
-const ReaderClient = dynamic(() => import('./ReaderClient'), { 
+const ReaderClient = nextDynamic(() => import('./ReaderClient'), { 
   ssr: false,
   loading: () => (
     <div className="flex flex-col h-screen items-center justify-center bg-[#FAF9F6] text-[#6B7280]">
