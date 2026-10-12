@@ -22,24 +22,32 @@ async function queryD1(sql: string, params: any[] = []) {
   return data.result[0].results;
 }
 
+const NO_CACHE_HEADERS = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+  'CDN-Cache-Control': 'no-store',
+  'Netlify-CDN-Cache-Control': 'no-store',
+  'Pragma': 'no-cache',
+  'Expires': '0',
+};
+
 // GET: Get document details
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { userId } = await auth();
     if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: NO_CACHE_HEADERS });
     }
 
     const { id } = await params;
     const results = await queryD1('SELECT * FROM documents WHERE id = ? AND user_id = ?', [id, userId]);
 
     if (!results || results.length === 0) {
-      return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Document not found' }, { status: 404, headers: NO_CACHE_HEADERS });
     }
 
-    return NextResponse.json({ document: results[0] });
+    return NextResponse.json({ document: results[0] }, { headers: NO_CACHE_HEADERS });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: 500, headers: NO_CACHE_HEADERS });
   }
 }
 
@@ -76,9 +84,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const sql = `UPDATE documents SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`;
 
     await queryD1(sql, sqlParams);
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true }, { headers: NO_CACHE_HEADERS });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: 500, headers: NO_CACHE_HEADERS });
   }
 }
 
@@ -87,7 +95,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   try {
     const { userId } = await auth();
     if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: NO_CACHE_HEADERS });
     }
 
     const { id } = await params;
@@ -105,8 +113,8 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       await queryD1('DELETE FROM documents WHERE id = ? AND user_id = ?', [id, userId]);
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true }, { headers: NO_CACHE_HEADERS });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: 500, headers: NO_CACHE_HEADERS });
   }
 }

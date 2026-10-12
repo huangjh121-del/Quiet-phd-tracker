@@ -4,16 +4,26 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, BookOpen, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import localforage from 'localforage';
+import { useAuth } from '@clerk/nextjs';
 
 export default function BookShelf() {
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const [books, setBooks] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     async function loadBooks() {
       try {
+        let token: string | null = null;
+        try { token = await getToken(); } catch (e) {}
+
+        const fetchHeaders: Record<string, string> = {
+          'Cache-Control': 'no-cache',
+        };
+        if (token) fetchHeaders['Authorization'] = `Bearer ${token}`;
+
         // 1. Fetch cloud documents
-        const res = await fetch('/api/documents?type=book&t=' + Date.now());
+        const res = await fetch('/api/documents?type=book&t=' + Date.now(), { headers: fetchHeaders });
         const data = await res.json();
         let cloudBooks: any[] = [];
         if (data.documents) {
@@ -55,7 +65,7 @@ export default function BookShelf() {
     }
 
     loadBooks();
-  }, []);
+  }, [isLoaded, isSignedIn]);
 
   return (
     <div className="min-h-screen bg-[#FAF9F6] text-[#1C1C1C] flex flex-col relative selection:bg-[#E2E8F0]">

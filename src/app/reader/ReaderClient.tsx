@@ -5,6 +5,7 @@ import { ArrowLeft, PlayCircle, Plus, Type, Check, Loader2, ChevronLeft, Chevron
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import localforage from 'localforage';
+import { useAuth } from '@clerk/nextjs';
 import { ReactReader } from 'react-reader';
 import { Document, Page, pdfjs } from 'react-pdf';
 // import 'react-pdf/dist/Page/TextLayer.css';
@@ -17,6 +18,7 @@ if (typeof window !== 'undefined') {
 
 export default function Reader() {
   const router = useRouter();
+  const { getToken } = useAuth();
   const searchParamsHook = useSearchParams();
   const highlightText = searchParamsHook.get('highlight');
   const [fileData, setFileData] = useState<File | ArrayBuffer | string | null>(null);
@@ -156,7 +158,12 @@ export default function Reader() {
       // 2. Fetch from Cloud API (D1 & R2)
       if (!bookInfo || !blobOrBuffer) {
         try {
-          const docRes = await fetch(`/api/documents/${id}`);
+          let token: string | null = null;
+          try { token = await getToken(); } catch(e) {}
+          const docHeaders: Record<string, string> = { 'Cache-Control': 'no-cache' };
+          if (token) docHeaders['Authorization'] = `Bearer ${token}`;
+
+          const docRes = await fetch(`/api/documents/${id}`, { headers: docHeaders });
           if (docRes.ok) {
             const { document } = await docRes.json();
             if (document) {
@@ -181,7 +188,7 @@ export default function Reader() {
 
               // If cloud file in R2
               if (document.file_key) {
-                const fileRes = await fetch(`/api/documents/${id}/file`);
+                const fileRes = await fetch(`/api/documents/${id}/file`, { headers: docHeaders });
                 if (fileRes.ok) {
                   const blob = await fileRes.blob();
                   await localforage.setItem(`quiet_book_${id}`, blob);
@@ -270,11 +277,20 @@ export default function Reader() {
     if (!bookId) return;
     setIsCompleted(true);
     // Cloud sync
-    fetch(`/api/documents/${bookId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ percentage: 100 })
-    }).catch(e => console.error("Cloud mark completed error:", e));
+    (async () => {
+      try {
+        let token: string | null = null;
+        try { token = await getToken(); } catch(e) {}
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        fetch(`/api/documents/${bookId}`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({ percentage: 100 })
+        }).catch(e => console.error("Cloud mark completed error:", e));
+      } catch (err) {}
+    })();
 
     const lib = await localforage.getItem<any[]>('quiet_library') || [];
     const idx = lib.findIndex(b => b.id === bookId);
@@ -289,15 +305,24 @@ export default function Reader() {
   const saveProgress = async (currentLoc: string | number, progressPercent: number, totalPages: number = 0) => {
     if (!bookId) return;
     // Cloud sync
-    fetch(`/api/documents/${bookId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        readingProgress: String(currentLoc),
-        percentage: isCompleted ? 100 : progressPercent,
-        totalProgress: totalPages ? String(totalPages) : ''
-      })
-    }).catch(e => console.error("Cloud save progress error:", e));
+    (async () => {
+      try {
+        let token: string | null = null;
+        try { token = await getToken(); } catch(e) {}
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        fetch(`/api/documents/${bookId}`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
+            readingProgress: String(currentLoc),
+            percentage: isCompleted ? 100 : progressPercent,
+            totalProgress: totalPages ? String(totalPages) : ''
+          })
+        }).catch(e => console.error("Cloud save progress error:", e));
+      } catch (err) {}
+    })();
 
     const lib = await localforage.getItem<any[]>('quiet_library') || [];
     const idx = lib.findIndex(b => b.id === bookId);

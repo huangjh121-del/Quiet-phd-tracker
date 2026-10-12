@@ -4,16 +4,26 @@ import React, { useState, useEffect } from 'react';
 import { ArrowLeft, FileText, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import localforage from 'localforage';
+import { useAuth } from '@clerk/nextjs';
 
 export default function ArticleShelf() {
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const [articles, setArticles] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     async function loadArticles() {
       try {
+        let token: string | null = null;
+        try { token = await getToken(); } catch (e) {}
+
+        const fetchHeaders: Record<string, string> = {
+          'Cache-Control': 'no-cache',
+        };
+        if (token) fetchHeaders['Authorization'] = `Bearer ${token}`;
+
         // 1. Fetch cloud documents
-        const res = await fetch('/api/documents?type=article&t=' + Date.now());
+        const res = await fetch('/api/documents?type=article&t=' + Date.now(), { headers: fetchHeaders });
         const data = await res.json();
         let cloudArticles: any[] = [];
         if (data.documents) {
@@ -50,9 +60,12 @@ export default function ArticleShelf() {
               } else if (typeof fileBlob === 'string') {
                 content = fileBlob;
               }
+              const syncHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+              if (token) syncHeaders['Authorization'] = `Bearer ${token}`;
+
               const syncRes = await fetch('/api/documents', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: syncHeaders,
                 body: JSON.stringify({
                   id: localArt.id,
                   type: 'article',
@@ -61,7 +74,8 @@ export default function ArticleShelf() {
                   fileName: `${localArt.title.slice(0, 20)}.txt`,
                   fileKey: '',
                   content: content,
-                  totalProgress: ''
+                  totalProgress: '',
+                  percentage: localArt.isCompleted ? 100 : (localArt.progress || 0)
                 })
               });
               if (syncRes.ok) {
@@ -97,7 +111,7 @@ export default function ArticleShelf() {
     }
 
     loadArticles();
-  }, []);
+  }, [isLoaded, isSignedIn]);
 
   return (
     <div className="min-h-screen bg-[#FAF9F6] text-[#1C1C1C] flex flex-col relative selection:bg-[#E2E8F0]">

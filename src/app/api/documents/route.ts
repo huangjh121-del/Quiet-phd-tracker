@@ -21,12 +21,20 @@ async function queryD1(sql: string, params: any[] = []) {
   return data.result[0].results;
 }
 
+const NO_CACHE_HEADERS = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+  'CDN-Cache-Control': 'no-store',
+  'Netlify-CDN-Cache-Control': 'no-store',
+  'Pragma': 'no-cache',
+  'Expires': '0',
+};
+
 // GET: List all user's documents (books or articles)
 export async function GET(req: Request) {
   try {
     const { userId } = await auth();
     if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ documents: [] }, { headers: NO_CACHE_HEADERS });
     }
 
     const { searchParams } = new URL(req.url);
@@ -42,10 +50,10 @@ export async function GET(req: Request) {
     sql += ' ORDER BY last_read_at DESC';
 
     const results = await queryD1(sql, params);
-    return NextResponse.json({ documents: results });
+    return NextResponse.json({ documents: results }, { headers: NO_CACHE_HEADERS });
   } catch (error: any) {
     console.error('Fetch documents error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message, documents: [] }, { status: 500, headers: NO_CACHE_HEADERS });
   }
 }
 
@@ -54,18 +62,21 @@ export async function POST(req: Request) {
   try {
     const { userId } = await auth();
     if (!userId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: NO_CACHE_HEADERS });
     }
 
     const body = await req.json();
-    let { id, type, title, author, fileName, fileKey, content, totalProgress } = body;
+    let { id, type, title, author, fileName, fileKey, content, totalProgress, readingProgress, percentage } = body;
 
     if (!type || !title) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400, headers: NO_CACHE_HEADERS });
     }
 
     const docId = id || Date.now().toString();
     const now = Date.now();
+    const percentVal = typeof percentage === 'number' ? percentage : 0;
+    const progressVal = readingProgress ? String(readingProgress) : '';
+
     const sql = `
       INSERT INTO documents (id, user_id, type, title, author, file_name, file_key, content, reading_progress, total_progress, percentage, created_at, last_read_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -73,6 +84,8 @@ export async function POST(req: Request) {
         title = excluded.title,
         author = excluded.author,
         content = CASE WHEN excluded.content != '' THEN excluded.content ELSE documents.content END,
+        percentage = CASE WHEN excluded.percentage > 0 THEN excluded.percentage ELSE documents.percentage END,
+        reading_progress = CASE WHEN excluded.reading_progress != '' THEN excluded.reading_progress ELSE documents.reading_progress END,
         last_read_at = excluded.last_read_at
     `;
     const params = [
@@ -84,17 +97,17 @@ export async function POST(req: Request) {
       fileName || '',
       fileKey || '',
       content || '',
-      '',
+      progressVal,
       totalProgress || '',
-      0,
+      percentVal,
       now,
       now
     ];
 
     await queryD1(sql, params);
-    return NextResponse.json({ success: true, id: docId, document: { id: docId, type, title, content } });
+    return NextResponse.json({ success: true, id: docId, document: { id: docId, type, title, content, percentage: percentVal } }, { headers: NO_CACHE_HEADERS });
   } catch (error: any) {
     console.error('Create document error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: 500, headers: NO_CACHE_HEADERS });
   }
 }

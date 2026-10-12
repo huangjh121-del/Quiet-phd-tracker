@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 
+const NO_CACHE_HEADERS = {
+  'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0',
+  'CDN-Cache-Control': 'no-store',
+  'Netlify-CDN-Cache-Control': 'no-store',
+  'Pragma': 'no-cache',
+  'Expires': '0',
+};
+
 export async function GET(req: Request) {
   try {
     const { userId } = await auth();
@@ -10,7 +18,7 @@ export async function GET(req: Request) {
     const TOKEN = process.env.CLOUDFLARE_D1_TOKEN;
 
     if (!ACCOUNT_ID || !DB_ID || !TOKEN) {
-      return NextResponse.json({ error: 'Config missing', sentences: [] }, { status: 500 });
+      return NextResponse.json({ error: 'Config missing', sentences: [] }, { status: 500, headers: NO_CACHE_HEADERS });
     }
 
     const payload = userId 
@@ -47,9 +55,9 @@ export async function GET(req: Request) {
       return true;
     });
 
-    return NextResponse.json({ sentences: uniqueSentences });
+    return NextResponse.json({ sentences: uniqueSentences }, { headers: NO_CACHE_HEADERS });
   } catch (err: any) {
     console.error("Error in /api/sentences:", err);
-    return NextResponse.json({ error: err.message, sentences: [] }, { status: 500 });
+    return NextResponse.json({ error: err.message, sentences: [] }, { status: 500, headers: NO_CACHE_HEADERS });
   }
 }

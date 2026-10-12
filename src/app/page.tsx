@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { BookOpen, BookA, TextQuote, Quote, Target, Settings, Search, Clock, Plus, ChevronRight, Bookmark, X, Upload, Loader2, Flame, CheckCircle2, FileText, Book } from 'lucide-react';
 import Link from 'next/link';
-import { SignInButton, SignUpButton, Show, UserButton } from '@clerk/nextjs';
+import { useAuth, SignInButton, SignUpButton, Show, UserButton } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 import localforage from 'localforage';
 
@@ -22,6 +22,7 @@ interface BookMetadata {
 
 export default function Home() {
   const router = useRouter();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const [showImportModal, setShowImportModal] = useState(false);
   const [importCategory, setImportCategory] = useState<'book' | 'article'>('book');
   const [importMethod, setImportMethod] = useState<'file' | 'text'>('file');
@@ -39,24 +40,35 @@ export default function Home() {
   useEffect(() => {
     loadLibrary();
     
-    // Fetch D1 stats
-    Promise.all([
-      fetch('/api/library-items?type=word&t=' + Date.now()).then(r => r.json()),
-      fetch('/api/library-items?type=phrase&t=' + Date.now()).then(r => r.json()),
-      fetch('/api/sentences?t=' + Date.now()).then(r => r.json())
-    ]).then(([wRes, pRes, sRes]) => {
-      const words = wRes.items || [];
-      const phrases = pRes.items || [];
-      const sentences = sRes.sentences || [];
-      const now = Date.now();
-      setLibStats({
-        words: words.length,
-        phrases: phrases.length,
-        sentences: sentences.length,
-        dueWords: words.filter((w: any) => (w.repetition || 0) > 0 && w.next_review_at <= now).length,
-        duePhrases: phrases.filter((p: any) => (p.repetitions || 0) > 0 && p.next_review_at <= now).length
-      });
-    });
+    // Fetch D1 stats with token
+    (async () => {
+      try {
+        let token: string | null = null;
+        try { token = await getToken(); } catch (e) {}
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const [wRes, pRes, sRes] = await Promise.all([
+          fetch('/api/library-items?type=word&t=' + Date.now(), { headers }).then(r => r.json()).catch(() => ({ items: [] })),
+          fetch('/api/library-items?type=phrase&t=' + Date.now(), { headers }).then(r => r.json()).catch(() => ({ items: [] })),
+          fetch('/api/sentences?t=' + Date.now(), { headers }).then(r => r.json()).catch(() => ({ sentences: [] }))
+        ]);
+
+        const words = wRes.items || [];
+        const phrases = pRes.items || [];
+        const sentences = sRes.sentences || [];
+        const now = Date.now();
+        setLibStats({
+          words: words.length,
+          phrases: phrases.length,
+          sentences: sentences.length,
+          dueWords: words.filter((w: any) => (w.repetition || 0) > 0 && w.next_review_at <= now).length,
+          duePhrases: phrases.filter((p: any) => (p.repetitions || 0) > 0 && p.next_review_at <= now).length
+        });
+      } catch (err) {
+        console.warn("Failed to load lib stats:", err);
+      }
+    })();
 
     // Fetch localforage stats
     localforage.getItem<any>('quiet_reading_stats').then(stats => {
@@ -102,12 +114,20 @@ export default function Home() {
       setDisplayDays(days);
     });
 
-  }, []);
+  }, [isLoaded, isSignedIn]);
 
   const loadLibrary = async () => {
     try {
+      let token: string | null = null;
+      try { token = await getToken(); } catch (e) {}
+
+      const fetchHeaders: Record<string, string> = {
+        'Cache-Control': 'no-cache',
+      };
+      if (token) fetchHeaders['Authorization'] = `Bearer ${token}`;
+
       // 1. Cloud documents
-      const res = await fetch('/api/documents?t=' + Date.now());
+      const res = await fetch('/api/documents?t=' + Date.now(), { headers: fetchHeaders });
       const data = await res.json();
       let cloudDocs: BookMetadata[] = [];
       if (data.documents) {
@@ -147,9 +167,12 @@ export default function Home() {
                 content = fileBlob;
               }
             }
+            const syncHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+            if (token) syncHeaders['Authorization'] = `Bearer ${token}`;
+
             const syncRes = await fetch('/api/documents', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: syncHeaders,
               body: JSON.stringify({
                 id: localDoc.id,
                 type: localDoc.category || 'article',
@@ -158,7 +181,9 @@ export default function Home() {
                 fileName: `${localDoc.title.slice(0, 20)}.txt`,
                 fileKey: '',
                 content: content,
-                totalProgress: String(localDoc.totalSize || 0)
+                totalProgress: String(localDoc.totalSize || 0),
+                percentage: localDoc.isCompleted ? 100 : (localDoc.progress || 0),
+                readingProgress: String(localDoc.currentLocation || '')
               })
             });
             if (syncRes.ok) {
@@ -295,9 +320,14 @@ export default function Home() {
       // 1. Cloud Save to D1
       let docId = Date.now().toString();
       try {
+        let token: string | null = null;
+        try { token = await getToken(); } catch (e) {}
+        const postHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) postHeaders['Authorization'] = `Bearer ${token}`;
+
         const cloudRes = await fetch('/api/documents', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: postHeaders,
           body: JSON.stringify({
             id: docId,
             type: 'article',
@@ -306,6 +336,7 @@ export default function Home() {
             fileName: `${title.slice(0, 20)}.txt`,
             fileKey: '',
             content: pastedText,
+            percentage: 0,
           })
         });
         if (cloudRes.ok) {
