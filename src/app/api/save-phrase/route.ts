@@ -7,7 +7,7 @@ export async function POST(req: Request) {
     const { userId } = await auth();
     const uid = userId || 'public';
 
-    const { phrase, context, sourceTitle } = await req.json();
+    const { phrase, context, sourceTitle, meaning } = await req.json();
     if (!phrase) return NextResponse.json({ error: 'Missing phrase' }, { status: 400 });
 
     const ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -20,6 +20,7 @@ export async function POST(req: Request) {
 
     const cleanPhrase = phrase.trim();
     const cleanContext = (context || cleanPhrase).trim();
+    const cleanMeaning = typeof meaning === 'string' ? meaning.trim() : '';
 
     // Check for duplicates first (case-insensitive & trimmed)
     const checkPayload = {
@@ -40,8 +41,8 @@ export async function POST(req: Request) {
     const now = Date.now();
 
     const payload = {
-      sql: "INSERT INTO saved_phrases (id, phrase, context, source_title, saved_at, next_review_at, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      params: [id, cleanPhrase, cleanContext, sourceTitle || 'Unknown', now, now, uid]
+      sql: "INSERT INTO saved_phrases (id, phrase, context, source_title, saved_at, next_review_at, user_id, meaning) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      params: [id, cleanPhrase, cleanContext, sourceTitle || 'Unknown', now, now, uid, cleanMeaning]
     };
 
     const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/d1/database/${DB_ID}/query`, {

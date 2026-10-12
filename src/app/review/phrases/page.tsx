@@ -1,24 +1,56 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Loader2, PlayCircle, BookOpen, GraduationCap, Flame , Trash2 } from "lucide-react";
+import { ArrowLeft, Loader2, BookOpen, GraduationCap, Flame, Trash2, PenLine, Check } from "lucide-react";
 import Link from 'next/link';
 
 export default function WordsLibrary() {
   const [items, setItems] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [saveStatus, setSaveStatus] = useState<Record<string, 'idle' | 'saving' | 'saved'>>({});
 
   useEffect(() => {
     fetch('/api/library-items?type=phrase&t=' + Date.now())
       .then(res => res.json())
       .then(data => {
-        if (data.items) setItems(data.items);
+        if (data.items) {
+          setItems(data.items);
+          const initialNotes: Record<string, string> = {};
+          data.items.forEach((item: any) => {
+            initialNotes[item.id] = item.meaning || '';
+          });
+          setNotes(initialNotes);
+        }
         setIsLoading(false);
       })
       .catch(err => setIsLoading(false));
   }, []);
 
-  
+  const handleSaveMeaning = async (id: string, phrase: string) => {
+    const currentMeaning = notes[id] !== undefined ? notes[id] : (items.find(i => i.id === id)?.meaning || '');
+    setSaveStatus(prev => ({ ...prev, [id]: 'saving' }));
+    try {
+      const res = await fetch('/api/update-phrase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, phrase, meaning: currentMeaning })
+      });
+      if (res.ok) {
+        setItems(prev => prev.map(item => item.id === id ? { ...item, meaning: currentMeaning } : item));
+        setSaveStatus(prev => ({ ...prev, [id]: 'saved' }));
+        setTimeout(() => {
+          setSaveStatus(prev => ({ ...prev, [id]: 'idle' }));
+        }, 2000);
+      } else {
+        setSaveStatus(prev => ({ ...prev, [id]: 'idle' }));
+      }
+    } catch (err) {
+      console.error("Failed to update phrase meaning", err);
+      setSaveStatus(prev => ({ ...prev, [id]: 'idle' }));
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this phrase?')) return;
     try {
@@ -96,8 +128,8 @@ export default function WordsLibrary() {
               const isDue = !isNew && (item.next_review_at || 0) <= endOfTodayMs;
               
               return (
-                <div key={item.id} className="bg-white p-5 rounded-2xl shadow-sm border border-[#E5E5E5] flex items-center justify-between group hover:border-[#D1D5DB] transition-all">
-                  <div className="flex-1 flex flex-col md:flex-row items-start md:items-center gap-4">
+                <div key={item.id} className="bg-white p-5 rounded-2xl shadow-sm border border-[#E5E5E5] flex flex-col gap-4 group hover:border-[#D1D5DB] transition-all">
+                  <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                     <div className="w-48 shrink-0">
                       <h3 className="text-lg font-serif font-bold text-[#111827] mb-1">{item.phrase}</h3>
                       <div className="flex gap-2">
@@ -114,25 +146,70 @@ export default function WordsLibrary() {
                       </div>
                     </div>
                     
-                    <div className="flex-1 border-l border-[#F3F4F6] pl-6 relative flex flex-col justify-center">
+                    <div className="flex-1 border-t md:border-t-0 md:border-l border-[#F3F4F6] pt-3 md:pt-0 md:pl-6 relative flex flex-col justify-center">
                       <div className="text-sm text-[#6B7280] italic leading-relaxed line-clamp-3 md:line-clamp-2">
                         "{item.context}"
                       </div>
-                      <div className="mt-3 text-xs font-bold uppercase tracking-widest text-[#9CA3AF] flex items-center gap-2">
+                      <div className="mt-2 text-xs font-bold uppercase tracking-widest text-[#9CA3AF] flex items-center gap-2">
                         <BookOpen className="w-3 h-3" /> {item.source_title || 'Unknown Source'}
                       </div>
                     </div>
-                  </div>
-                  
-                  <div className="ml-6 flex items-center justify-end min-w-[100px]">
-                    {!isNew && (
-                      <div className="text-right">
-                        <div className="text-[10px] font-bold tracking-widest uppercase text-[#9CA3AF]">Next Review</div>
-                        <div className={`text-xs font-semibold mt-0.5 ${isDue ? 'text-[#E07A5F]' : 'text-[#111827]'}`}>
-                          {isDue ? 'NOW' : new Date(item.next_review_at).toLocaleDateString()}
+
+                    <div className="ml-0 md:ml-6 shrink-0 min-w-[90px] text-left md:text-right">
+                      {!isNew && (
+                        <div>
+                          <div className="text-[10px] font-bold tracking-widest uppercase text-[#9CA3AF]">Next Review</div>
+                          <div className={`text-xs font-semibold mt-0.5 ${isDue ? 'text-[#E07A5F]' : 'text-[#111827]'}`}>
+                            {isDue ? 'NOW' : new Date(item.next_review_at).toLocaleDateString()}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Editable Meaning & Notes Section */}
+                  <div className="pt-3 border-t border-[#F3F4F6] flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    <div className="flex items-center gap-1.5 shrink-0 text-[11px] font-bold tracking-wider uppercase text-[#3D5A80]">
+                      <PenLine className="w-3.5 h-3.5" />
+                      <span>含义与笔记:</span>
+                    </div>
+
+                    <input
+                      type="text"
+                      value={notes[item.id] !== undefined ? notes[item.id] : (item.meaning || '')}
+                      onChange={(e) => setNotes(prev => ({ ...prev, [item.id]: e.target.value }))}
+                      onBlur={() => {
+                        const currentVal = notes[item.id];
+                        if (currentVal !== undefined && currentVal !== (item.meaning || '')) {
+                          handleSaveMeaning(item.id, item.phrase);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleSaveMeaning(item.id, item.phrase);
+                        }
+                      }}
+                      placeholder="输入查询到的中文含义或重要用法笔记 (回车或失焦自动保存)..."
+                      className="flex-1 text-xs bg-[#FAF9F6] border border-[#E5E5E5] focus:bg-white rounded-lg px-3 py-1.5 text-[#111827] placeholder:text-[#9CA3AF] focus:outline-none focus:border-[#3D5A80] focus:ring-1 focus:ring-[#3D5A80] transition-all"
+                    />
+
+                    <button
+                      onClick={() => handleSaveMeaning(item.id, item.phrase)}
+                      disabled={saveStatus[item.id] === 'saving'}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 flex items-center justify-center gap-1.5 ${
+                        saveStatus[item.id] === 'saved'
+                          ? 'bg-[#5B8266] text-white'
+                          : 'bg-[#111827] hover:bg-[#374151] text-white shadow-sm'
+                      }`}
+                    >
+                      {saveStatus[item.id] === 'saving' ? (
+                        <><Loader2 className="w-3 h-3 animate-spin" /> 保存中</>
+                      ) : saveStatus[item.id] === 'saved' ? (
+                        <><Check className="w-3 h-3" /> 已保存</>
+                      ) : (
+                        '保存'
+                      )}
+                    </button>
                   </div>
                 </div>
               );

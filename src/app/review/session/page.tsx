@@ -3,7 +3,7 @@
 import { Suspense } from 'react';
 
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Loader2, PlayCircle, FileText } from 'lucide-react';
+import { ArrowLeft, Loader2, PlayCircle, FileText, PenLine, Check } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
@@ -15,6 +15,10 @@ function MainContent() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [isEditingNote, setIsEditingNote] = useState(false);
+  const [noteInput, setNoteInput] = useState('');
+  const [isSavingNote, setIsSavingNote] = useState(false);
 
   useEffect(() => {
     const endOfToday = new Date();
@@ -31,8 +35,37 @@ function MainContent() {
       });
   }, [reviewType]);
 
+  const currentItem = items[currentIndex];
+
+  useEffect(() => {
+    if (currentItem) {
+      setNoteInput(currentItem.meaning || '');
+      setIsEditingNote(false);
+    }
+  }, [currentIndex, currentItem]);
+
+  const handleSaveReviewNote = async () => {
+    if (!currentItem) return;
+    setIsSavingNote(true);
+    try {
+      const res = await fetch('/api/update-phrase', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: currentItem.id, phrase: currentItem.phrase, meaning: noteInput })
+      });
+      if (res.ok) {
+        setItems(prev => prev.map((item, idx) => idx === currentIndex ? { ...item, meaning: noteInput } : item));
+        setIsEditingNote(false);
+      }
+    } catch (err) {
+      console.error("Failed to update note in review session", err);
+    } finally {
+      setIsSavingNote(false);
+    }
+  };
+
   const handleNext = async (quality: number) => {
-    const currentItem = items[currentIndex];
+    if (!currentItem) return;
     setIsSubmitting(true);
     
     try {
@@ -66,8 +99,6 @@ function MainContent() {
       </div>
     );
   }
-
-  const currentItem = items[currentIndex];
 
   return (
     <div className="min-h-screen bg-[#FAF9F6] text-[#1C1C1C] flex flex-col relative selection:bg-[#E2E8F0]">
@@ -129,8 +160,61 @@ function MainContent() {
                   <div className="dict-html-container text-sm leading-relaxed" dangerouslySetInnerHTML={{ __html: currentItem.html_definition }} />
                 ) : (
                   <div className="space-y-6">
+                    {/* User's custom Meaning & Notes */}
+                    <div className="bg-[#3D5A80]/5 border-l-4 border-[#3D5A80] p-5 rounded-r-2xl space-y-2">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-[10px] font-bold tracking-widest uppercase text-[#3D5A80] flex items-center gap-1.5">
+                          <PenLine className="w-3.5 h-3.5" /> Meaning & Notes (释义与笔记)
+                        </h4>
+                        {!isEditingNote && (
+                          <button
+                            onClick={() => { setNoteInput(currentItem.meaning || ''); setIsEditingNote(true); }}
+                            className="text-xs text-[#3D5A80] hover:underline font-bold"
+                          >
+                            {currentItem.meaning ? '编辑笔记' : '+ 添加笔记'}
+                          </button>
+                        )}
+                      </div>
+
+                      {isEditingNote ? (
+                        <div className="space-y-2">
+                          <textarea
+                            value={noteInput}
+                            onChange={(e) => setNoteInput(e.target.value)}
+                            placeholder="输入中文含义或重点笔记..."
+                            rows={2}
+                            className="w-full text-sm bg-white border border-[#E5E5E5] rounded-xl p-3 text-[#111827] focus:outline-none focus:border-[#3D5A80] focus:ring-1 focus:ring-[#3D5A80] resize-y"
+                          />
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => setIsEditingNote(false)}
+                              className="px-3 py-1.5 text-xs text-[#6B7280] hover:text-[#111827] font-medium"
+                            >
+                              取消
+                            </button>
+                            <button
+                              onClick={handleSaveReviewNote}
+                              disabled={isSavingNote}
+                              className="px-4 py-1.5 bg-[#111827] hover:bg-[#374151] text-white text-xs font-bold rounded-lg shadow-sm flex items-center gap-1"
+                            >
+                              {isSavingNote ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                              保存
+                            </button>
+                          </div>
+                        </div>
+                      ) : currentItem.meaning ? (
+                        <p className="text-base font-medium text-[#111827] leading-relaxed whitespace-pre-wrap">
+                          {currentItem.meaning}
+                        </p>
+                      ) : (
+                        <p className="text-sm text-[#9CA3AF] italic">
+                          暂无中文释义记录。点击右上角即可添加笔记。
+                        </p>
+                      )}
+                    </div>
+
                     <div>
-                      <h4 className="text-[10px] font-bold tracking-widest uppercase text-[#6B7280] mb-3">Original Context</h4>
+                      <h4 className="text-[10px] font-bold tracking-widest uppercase text-[#6B7280] mb-2">Original Context</h4>
                       <p className="text-lg font-serif text-[#111827] leading-relaxed border-l-4 border-[#E07A5F] pl-4 italic">"{currentItem.context}"</p>
                     </div>
                     <div>
