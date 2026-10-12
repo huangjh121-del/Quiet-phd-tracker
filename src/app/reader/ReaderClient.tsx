@@ -12,14 +12,21 @@ import { Document, Page, pdfjs } from 'react-pdf';
 // import 'react-pdf/dist/Page/TextLayer.css';
 // import 'react-pdf/dist/Page/AnnotationLayer.css';
 
-// Initialize PDF.js worker from local static bundle
+// Initialize PDF.js worker
 if (typeof window !== 'undefined') {
-  pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
+  try {
+    if ('Worker' in window) {
+      pdfjs.GlobalWorkerOptions.workerPort = new Worker('/pdf.worker.mjs', { type: 'module' });
+    }
+  } catch (e) {
+    console.warn('Worker port failed, using workerSrc fallback:', e);
+  }
+  pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.mjs';
 }
 
 export default function Reader() {
   const router = useRouter();
-  const { getToken } = useAuth();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const searchParamsHook = useSearchParams();
   const highlightText = searchParamsHook.get('highlight');
   const [fileData, setFileData] = useState<File | ArrayBuffer | string | null>(null);
@@ -124,6 +131,9 @@ export default function Reader() {
     if (!id) return;
     setBookId(id);
 
+    // Wait for Clerk to be ready before performing auth-required cloud operations
+    if (!isLoaded) return;
+
     async function loadBookData() {
       let bookInfo: any = null;
       let blobOrBuffer: any = null;
@@ -137,8 +147,22 @@ export default function Reader() {
         }
         blobOrBuffer = await localforage.getItem(`quiet_book_${id}`);
 
-        // 2. Fetch from Cloud API (D1 & R2)
-        if (!bookInfo || !blobOrBuffer) {
+        // Validate whether local cached file actually has content
+        let isValidCachedFile = false;
+        if (blobOrBuffer) {
+          if (typeof blobOrBuffer === 'string' && blobOrBuffer.length > 0) {
+            isValidCachedFile = true;
+          } else if (blobOrBuffer instanceof Blob && blobOrBuffer.size > 0) {
+            isValidCachedFile = true;
+          } else if (blobOrBuffer instanceof ArrayBuffer && blobOrBuffer.byteLength > 0) {
+            isValidCachedFile = true;
+          } else if (typeof blobOrBuffer === 'object' && ('size' in blobOrBuffer ? (blobOrBuffer as any).size > 0 : true)) {
+            isValidCachedFile = true;
+          }
+        }
+
+        // 2. Fetch from Cloud API (D1 & R2) if local cache is missing or invalid
+        if (!bookInfo || !isValidCachedFile) {
           setLoadingStatus('正在连接云端获取文档信息...');
           let token: string | null = null;
           try { token = await getToken(); } catch(e) {}
@@ -175,12 +199,15 @@ export default function Reader() {
 
           // If cloud file in R2
           if (document.file_key) {
-            setLoadingStatus('正在从云端加载图书文件 (约 1-3 秒)...');
+            setLoadingStatus('正在从云端下载图书文件 (约 1-3 秒)...');
             const fileRes = await fetch(`/api/documents/${id}/file`, { headers: docHeaders });
             if (!fileRes.ok) {
               throw new Error(`云端图书文件读取失败 (HTTP ${fileRes.status})`);
             }
             const blob = await fileRes.blob();
+            if (blob.size === 0) {
+              throw new Error('云端下载的文件为空 (0 字节)');
+            }
             await localforage.setItem(`quiet_book_${id}`, blob);
             blobOrBuffer = blob;
           } else {
@@ -209,7 +236,19 @@ export default function Reader() {
           } else {
             const isPdf = blobOrBuffer.type === 'application/pdf' || (blobOrBuffer.name && blobOrBuffer.name.toLowerCase().endsWith('.pdf')) || (bookInfo && bookInfo.type === 'pdf');
             if (isPdf) {
-              setFileData(blobOrBuffer);
+              setLoadingStatus('正在解析 PDF 文档结构...');
+              let buffer: ArrayBuffer;
+              if (blobOrBuffer instanceof ArrayBuffer) {
+                buffer = blobOrBuffer;
+              } else if (typeof blobOrBuffer.arrayBuffer === 'function') {
+                buffer = await blobOrBuffer.arrayBuffer();
+              } else {
+                buffer = await new Response(blobOrBuffer).arrayBuffer();
+              }
+              if (!buffer || buffer.byteLength === 0) {
+                throw new Error('PDF 缓存数据为空，请点击下方“清除本地缓存并重新下载”');
+              }
+              setFileData(buffer);
             } else {
               const buffer = typeof blobOrBuffer.arrayBuffer === 'function' ? await blobOrBuffer.arrayBuffer() : await new Response(blobOrBuffer).arrayBuffer();
               setFileData(buffer);
@@ -225,7 +264,7 @@ export default function Reader() {
     }
 
     loadBookData();
-  }, []);
+  }, [isLoaded, isSignedIn]);
 
   // Restore scroll position for text files when data is loaded
   
@@ -795,7 +834,18 @@ export default function Reader() {
             </div>
             <h2 className="text-xl font-bold font-serif text-[#111827] mb-2">文档加载失败</h2>
             <p className="text-sm text-[#6B7280] max-w-md mb-6">{errorMessage}</p>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <button
+                onClick={async () => {
+                  if (bookId) {
+                    try { await localforage.removeItem(`quiet_book_${bookId}`); } catch(e) {}
+                  }
+                  window.location.reload();
+                }}
+                className="flex items-center gap-2 px-5 py-2.5 bg-[#3D5A80] text-white rounded-full text-xs font-bold uppercase tracking-wider hover:bg-[#293241] transition-all shadow-sm cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> 清除缓存并从云端重新拉取
+              </button>
               <button
                 onClick={() => window.location.reload()}
                 className="flex items-center gap-2 px-5 py-2.5 bg-[#111827] text-white rounded-full text-xs font-bold uppercase tracking-wider hover:bg-[#374151] transition-all shadow-sm cursor-pointer"
@@ -811,9 +861,21 @@ export default function Reader() {
             </div>
           </div>
         ) : !fileData ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-[#6B7280] bg-[#FAF9F6]">
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-[#6B7280] bg-[#FAF9F6] p-8 text-center">
             <Loader2 className="w-8 h-8 animate-spin mb-4 text-[#3D5A80]" />
-            <p className="text-sm font-medium">{loadingStatus}</p>
+            <p className="text-sm font-medium text-[#111827] mb-1">{loadingStatus}</p>
+            <p className="text-xs text-[#9CA3AF] mb-5">初次从云端拉取可能需要数秒，请耐心等待</p>
+            <button
+              onClick={async () => {
+                if (bookId) {
+                  try { await localforage.removeItem(`quiet_book_${bookId}`); } catch(e) {}
+                }
+                window.location.reload();
+              }}
+              className="px-4 py-2 text-xs text-[#4B5563] bg-white border border-[#E5E5E5] rounded-full hover:bg-gray-50 transition cursor-pointer shadow-sm"
+            >
+              重置缓存重新拉取
+            </button>
           </div>
         ) : fileType === 'text' ? (
           <div 
@@ -897,14 +959,27 @@ export default function Reader() {
               file={fileData as any}
               onLoadSuccess={onDocumentLoadSuccess}
               onLoadError={(err) => setErrorMessage('PDF 解析失败: ' + err.message)}
-              loading={<Loader2 className="w-8 h-8 animate-spin text-[#3D5A80]" />}
+              onSourceError={(err) => setErrorMessage('PDF 源数据解析失败: ' + err.message)}
+              loading={
+                <div className="flex flex-col items-center justify-center p-12 text-[#6B7280]">
+                  <Loader2 className="w-8 h-8 animate-spin text-[#3D5A80] mb-3" />
+                  <p className="text-sm font-medium">正在解析 PDF 页面...</p>
+                </div>
+              }
               className="shadow-2xl cursor-text"
+              suspense={false}
             >
               <Page 
                 pageNumber={pageNumber} 
                 scale={pdfScale}
                 renderTextLayer={true}
                 renderAnnotationLayer={false}
+                loading={
+                  <div className="flex flex-col items-center justify-center p-12 text-[#6B7280]">
+                    <Loader2 className="w-6 h-6 animate-spin text-[#3D5A80] mb-2" />
+                    <p className="text-xs">渲染当前页中...</p>
+                  </div>
+                }
               />
             </Document>
           </div>
