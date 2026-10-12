@@ -847,16 +847,26 @@ export default function Reader() {
         )}
         {isCompleted ? (
           <button 
-            onClick={toggleCompleted}
-            className="flex items-center gap-2 px-4 py-2 bg-[#5B8266]/10 text-[#5B8266] hover:bg-[#5B8266]/20 rounded-full text-xs font-bold uppercase tracking-widest transition-colors cursor-pointer shadow-sm shrink-0"
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              toggleCompleted();
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-[#5B8266]/15 hover:bg-[#5B8266]/25 active:scale-95 text-[#5B8266] rounded-full text-xs font-bold uppercase tracking-widest transition-all cursor-pointer shadow-sm shrink-0 border border-[#5B8266]/30 select-none"
             title="点击可取消完成，恢复为阅读中"
           >
             <Check className="w-4 h-4" /> Completed
           </button>
         ) : (
           <button 
-            onClick={toggleCompleted}
-            className="flex items-center gap-2 px-4 py-2 bg-[#111827] hover:bg-[#3D5A80] text-white rounded-full text-xs font-bold uppercase tracking-widest transition-colors shadow-sm shrink-0 cursor-pointer"
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              toggleCompleted();
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-[#111827] hover:bg-[#3D5A80] active:scale-95 text-white rounded-full text-xs font-bold uppercase tracking-widest transition-all shadow-sm shrink-0 cursor-pointer select-none"
             title="点击标记为读完"
           >
             <Check className="w-4 h-4" /> Mark Complete
