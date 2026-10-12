@@ -43,7 +43,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     }
 
     const command = new GetObjectCommand({
-      Bucket: process.env.R2_BUCKET_NAME!,
+      Bucket: process.env.R2_BUCKET_NAME || process.env.CF_R2_BUCKET || 'quiet-tracker-storage',
       Key: doc.file_key
     });
 

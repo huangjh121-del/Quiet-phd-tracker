@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { ArrowLeft, PlayCircle, Plus, Type, Check, Loader2, ChevronLeft, ChevronRight, Menu, List, X } from 'lucide-react';
+import { ArrowLeft, PlayCircle, Plus, Type, Check, Loader2, ChevronLeft, ChevronRight, Menu, List, X, AlertCircle, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import localforage from 'localforage';
@@ -12,9 +12,9 @@ import { Document, Page, pdfjs } from 'react-pdf';
 // import 'react-pdf/dist/Page/TextLayer.css';
 // import 'react-pdf/dist/Page/AnnotationLayer.css';
 
-// Initialize PDF.js worker
+// Initialize PDF.js worker from local static bundle
 if (typeof window !== 'undefined') {
-  pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+  pdfjs.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 }
 
 export default function Reader() {
@@ -33,6 +33,8 @@ export default function Reader() {
   const [toast, setToast] = useState<string | null>(null);
   // Removed highlightText state in favor of dynamic searchParams
   const [isCompleted, setIsCompleted] = useState<boolean>(false);
+  const [loadingStatus, setLoadingStatus] = useState<string>('正在准备文档...');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -126,73 +128,79 @@ export default function Reader() {
       let bookInfo: any = null;
       let blobOrBuffer: any = null;
 
-      // 1. Try local cache first for instant speed
-      const localLib = await localforage.getItem<any[]>('quiet_library');
-      if (localLib) {
-        bookInfo = localLib.find(b => b.id === id);
-      }
-      blobOrBuffer = await localforage.getItem(`quiet_book_${id}`);
+      try {
+        setLoadingStatus('正在从本地缓存读取...');
+        // 1. Try local cache first for instant speed
+        const localLib = await localforage.getItem<any[]>('quiet_library');
+        if (localLib) {
+          bookInfo = localLib.find(b => b.id === id);
+        }
+        blobOrBuffer = await localforage.getItem(`quiet_book_${id}`);
 
-      // 2. Fetch from Cloud API (D1 & R2)
-      if (!bookInfo || !blobOrBuffer) {
-        try {
+        // 2. Fetch from Cloud API (D1 & R2)
+        if (!bookInfo || !blobOrBuffer) {
+          setLoadingStatus('正在连接云端获取文档信息...');
           let token: string | null = null;
           try { token = await getToken(); } catch(e) {}
           const docHeaders: Record<string, string> = { 'Cache-Control': 'no-cache' };
           if (token) docHeaders['Authorization'] = `Bearer ${token}`;
 
           const docRes = await fetch(`/api/documents/${id}`, { headers: docHeaders });
-          if (docRes.ok) {
-            const { document } = await docRes.json();
-            if (document) {
-              const isEpub = (document.file_name && document.file_name.toLowerCase().endsWith('.epub'));
-              const isTxt = document.type === 'article' && Boolean(document.content);
-              bookInfo = {
-                title: document.title,
-                isCompleted: (document.percentage || 0) >= 100,
-                type: isEpub ? 'epub' : (isTxt ? 'text' : 'pdf'),
-                currentLocation: document.reading_progress || (isEpub ? 0 : 1),
-              };
-
-              // If text article
-              if (document.content) {
-                setFileData(document.content);
-                setBookTitle(bookInfo.title);
-                setIsCompleted(bookInfo.isCompleted);
-                setFileType('text');
-                localforage.setItem(`quiet_book_${id}`, document.content).catch(() => {});
-                return;
-              }
-
-              // If cloud file in R2
-              if (document.file_key) {
-                const fileRes = await fetch(`/api/documents/${id}/file`, { headers: docHeaders });
-                if (fileRes.ok) {
-                  const blob = await fileRes.blob();
-                  await localforage.setItem(`quiet_book_${id}`, blob);
-                  blobOrBuffer = blob;
-                }
-              }
-            }
+          if (!docRes.ok) {
+            throw new Error(`获取文档记录失败 (HTTP ${docRes.status})`);
           }
-        } catch (cloudErr) {
-          console.warn("Cloud doc fetch error:", cloudErr);
-        }
-      }
+          const { document } = await docRes.json();
+          if (!document) {
+            throw new Error('云端未找到该文档记录');
+          }
 
-      if (bookInfo) {
-        setBookTitle(bookInfo.title);
-        setIsCompleted(bookInfo.isCompleted || false);
-        setFileType(bookInfo.type);
-        if (bookInfo.type === 'pdf') {
-          setPageNumber(Number(bookInfo.currentLocation) || 1);
-        } else {
-          setLocation(bookInfo.currentLocation || 0);
-        }
-      }
+          const isEpub = (document.file_name && document.file_name.toLowerCase().endsWith('.epub'));
+          const isTxt = document.type === 'article' && Boolean(document.content);
+          bookInfo = {
+            title: document.title,
+            isCompleted: (document.percentage || 0) >= 100,
+            type: isEpub ? 'epub' : (isTxt ? 'text' : 'pdf'),
+            currentLocation: document.reading_progress || (isEpub ? 0 : 1),
+          };
 
-      if (blobOrBuffer) {
-        try {
+          // If text article
+          if (document.content) {
+            setFileData(document.content);
+            setBookTitle(bookInfo.title);
+            setIsCompleted(bookInfo.isCompleted);
+            setFileType('text');
+            localforage.setItem(`quiet_book_${id}`, document.content).catch(() => {});
+            return;
+          }
+
+          // If cloud file in R2
+          if (document.file_key) {
+            setLoadingStatus('正在从云端加载图书文件 (约 1-3 秒)...');
+            const fileRes = await fetch(`/api/documents/${id}/file`, { headers: docHeaders });
+            if (!fileRes.ok) {
+              throw new Error(`云端图书文件读取失败 (HTTP ${fileRes.status})`);
+            }
+            const blob = await fileRes.blob();
+            await localforage.setItem(`quiet_book_${id}`, blob);
+            blobOrBuffer = blob;
+          } else {
+            throw new Error('该文档未关联云端文件');
+          }
+        }
+
+        if (bookInfo) {
+          setBookTitle(bookInfo.title);
+          setIsCompleted(bookInfo.isCompleted || false);
+          setFileType(bookInfo.type);
+          if (bookInfo.type === 'pdf') {
+            setPageNumber(Number(bookInfo.currentLocation) || 1);
+          } else {
+            setLocation(bookInfo.currentLocation || 0);
+          }
+        }
+
+        if (blobOrBuffer) {
+          setLoadingStatus('正在解析渲染文档...');
           if (typeof blobOrBuffer === 'string') {
             setFileData(blobOrBuffer);
           } else if (blobOrBuffer.type === 'text/plain') {
@@ -207,10 +215,12 @@ export default function Reader() {
               setFileData(buffer);
             }
           }
-        } catch (err) {
-          console.error("Failed to parse blob:", err);
-          setFileData(blobOrBuffer);
+        } else {
+          throw new Error('未能获取到文档数据，请确认文件是否存在');
         }
+      } catch (err: any) {
+        console.error("loadBookData error:", err);
+        setErrorMessage(err.message || '加载文档时发生未知错误');
       }
     }
 
@@ -778,10 +788,32 @@ export default function Reader() {
       </header>
 
       <main className="flex-1 relative w-full h-full overflow-y-auto">
-        {!fileData ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-[#6B7280]">
+        {errorMessage ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center bg-[#FAF9F6] z-10">
+            <div className="w-14 h-14 rounded-2xl bg-red-50 text-red-500 flex items-center justify-center mb-4 border border-red-100 shadow-sm">
+              <AlertCircle className="w-7 h-7" />
+            </div>
+            <h2 className="text-xl font-bold font-serif text-[#111827] mb-2">文档加载失败</h2>
+            <p className="text-sm text-[#6B7280] max-w-md mb-6">{errorMessage}</p>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => window.location.reload()}
+                className="flex items-center gap-2 px-5 py-2.5 bg-[#111827] text-white rounded-full text-xs font-bold uppercase tracking-wider hover:bg-[#374151] transition-all shadow-sm cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> 重新加载
+              </button>
+              <button
+                onClick={() => router.push('/')}
+                className="px-5 py-2.5 bg-white border border-[#E5E5E5] text-[#374151] rounded-full text-xs font-bold uppercase tracking-wider hover:bg-[#F3F4F6] transition-all cursor-pointer"
+              >
+                返回首页
+              </button>
+            </div>
+          </div>
+        ) : !fileData ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-[#6B7280] bg-[#FAF9F6]">
             <Loader2 className="w-8 h-8 animate-spin mb-4 text-[#3D5A80]" />
-            <p>Loading document...</p>
+            <p className="text-sm font-medium">{loadingStatus}</p>
           </div>
         ) : fileType === 'text' ? (
           <div 
@@ -862,8 +894,9 @@ export default function Reader() {
             }}
           >
             <Document
-              file={fileData as File}
+              file={fileData as any}
               onLoadSuccess={onDocumentLoadSuccess}
+              onLoadError={(err) => setErrorMessage('PDF 解析失败: ' + err.message)}
               loading={<Loader2 className="w-8 h-8 animate-spin text-[#3D5A80]" />}
               className="shadow-2xl cursor-text"
             >

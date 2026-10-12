@@ -274,13 +274,17 @@ export default function Home() {
         });
         const urlData = await urlRes.json();
         if (urlData.uploadUrl) {
-          fileKey = urlData.fileKey;
           // Direct PUT to R2
-          await fetch(urlData.uploadUrl, {
+          const putRes = await fetch(urlData.uploadUrl, {
             method: 'PUT',
             headers: { 'Content-Type': contentType },
             body: file
           });
+          if (putRes.ok) {
+            fileKey = urlData.fileKey;
+          } else {
+            console.warn("R2 PUT upload failed with status:", putRes.status);
+          }
         }
       } catch (uploadErr) {
         console.warn("Cloud upload warning, proceeding with local fallback:", uploadErr);
