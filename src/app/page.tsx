@@ -241,7 +241,9 @@ export default function Home() {
       migratedLocal.forEach(b => map.set(b.id, b));
       cloudDocs.forEach(b => map.set(b.id, b));
 
-      setLibrary(Array.from(map.values()).sort((a, b) => b.lastReadAt - a.lastReadAt));
+      const mergedList = Array.from(map.values()).sort((a, b) => b.lastReadAt - a.lastReadAt);
+      setLibrary(mergedList);
+      localforage.setItem('quiet_library', mergedList).catch(() => {});
     } catch (e) {
       console.error("Failed to load library:", e);
     }

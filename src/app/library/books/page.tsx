@@ -57,6 +57,22 @@ export default function BookShelf() {
 
         const combined = Array.from(map.values()).sort((a, b) => b.lastReadAt - a.lastReadAt);
         setBooks(combined);
+
+        // Keep local cache quiet_library in sync with cloud books
+        if (localLib.length > 0 && cloudBooks.length > 0) {
+          let hasDiff = false;
+          cloudBooks.forEach(cb => {
+            const item = localLib.find(b => b.id === cb.id);
+            if (item && (item.isCompleted !== cb.isCompleted || item.progress !== cb.progress)) {
+              item.isCompleted = cb.isCompleted;
+              item.progress = cb.progress;
+              hasDiff = true;
+            }
+          });
+          if (hasDiff) {
+            localforage.setItem('quiet_library', localLib).catch(() => {});
+          }
+        }
       } catch (err) {
         console.error("Error loading books:", err);
       } finally {
