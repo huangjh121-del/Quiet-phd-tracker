@@ -1,9 +1,13 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { BookOpen, BookA, TextQuote, Quote, Target, Settings, Search, Clock, Plus, ChevronRight, Bookmark, X, Upload, Loader2, Flame, CheckCircle2, FileText, Book, Pencil } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { 
+  BookOpen, BookA, TextQuote, Target, Settings, Search, Clock, Plus, 
+  ChevronRight, Bookmark, X, Upload, Loader2, Flame, CheckCircle2, 
+  FileText, Book, Pencil, Sparkles, ArrowUpRight, Library, Layers
+} from 'lucide-react';
 import Link from 'next/link';
-import { useAuth, SignInButton, SignUpButton, Show, UserButton } from '@clerk/nextjs';
+import { useAuth, SignInButton, Show, UserButton } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 import localforage from 'localforage';
 import { mergeStats, calculateStreak } from '@/lib/readingTracker';
@@ -89,7 +93,6 @@ export default function Home() {
             stats = mergeStats(stats, data.stats);
             await localforage.setItem('quiet_reading_stats', stats);
           } else if (stats) {
-            // Upload local stats to cloud if cloud is empty
             fetch('/api/reading-stats', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -116,7 +119,6 @@ export default function Home() {
           history: stats
         });
 
-        // Filter out metadata keys to find actual dates
         const historyKeys = Object.keys(stats).filter(k => k !== 'streak' && k !== 'activeDays' && stats[k] > 0);
         if (historyKeys.length > 0) {
           const timestamps = historyKeys.map(d => new Date(d).getTime()).filter(t => !isNaN(t));
@@ -164,7 +166,7 @@ export default function Home() {
         cloudDocs = data.documents.map((d: any) => ({
           id: d.id,
           title: d.title,
-          author: d.author || 'Imported Document',
+          author: d.author || '',
           type: (d.file_name && d.file_name.toLowerCase().endsWith('.epub')) ? 'epub' : ((d.type === 'article' || d.content) ? 'text' : 'pdf'),
           category: d.type === 'book' ? 'book' : 'article',
           lastReadAt: d.last_read_at || Date.now(),
@@ -180,7 +182,7 @@ export default function Home() {
       const migratedLocal = localLib.map(b => ({
         ...b,
         category: b.category || (b.type === 'epub' ? 'book' : 'article'),
-        author: b.author || 'Imported Document'
+        author: b.author || ''
       }));
 
       // 3. Auto-sync any local-only documents to Cloudflare D1
@@ -207,7 +209,7 @@ export default function Home() {
                 id: localDoc.id,
                 type: localDoc.category || 'article',
                 title: localDoc.title,
-                author: localDoc.author || 'Pasted Text',
+                author: localDoc.author || '',
                 fileName: `${localDoc.title.slice(0, 20)}.txt`,
                 fileKey: '',
                 content: content,
@@ -222,7 +224,7 @@ export default function Home() {
                 cloudDocs.push({
                   id: syncData.document.id,
                   title: syncData.document.title,
-                  author: localDoc.author || 'Pasted Text',
+                  author: localDoc.author || '',
                   type: 'text',
                   category: (syncData.document.type || 'article') as 'book' | 'article',
                   lastReadAt: localDoc.lastReadAt || Date.now(),
@@ -254,97 +256,104 @@ export default function Home() {
 
   const processFile = async (file: File) => {
     if (!file) return;
-    
     const isEpub = file.name.toLowerCase().endsWith('.epub');
     const isPdf = file.name.toLowerCase().endsWith('.pdf');
-    
     if (!isEpub && !isPdf) {
-      alert("Please select a valid PDF or EPUB file.");
+      alert("Please upload an EPUB or PDF document.");
       return;
     }
 
     setIsExtracting(true);
-    try {
-      const id = Date.now().toString();
-      const title = file.name.replace(/\.[^/.]+$/, "");
-      const contentType = file.type || (isPdf ? 'application/pdf' : 'application/epub+zip');
+    const id = Date.now().toString();
+    const type = isEpub ? 'epub' : 'pdf';
+    const category = importCategory;
+    const cleanTitle = file.name.replace(/\.[^/.]+$/, "");
 
-      // 1. Get presigned upload URL for R2
+    try {
+      await localforage.setItem(`quiet_book_${id}`, file);
+
       let fileKey = '';
       try {
+        let token: string | null = null;
+        try { token = await getToken(); } catch (e) {}
+
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
         const urlRes = await fetch('/api/documents/upload-url', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fileName: file.name, contentType })
+          headers,
+          body: JSON.stringify({
+            filename: file.name,
+            fileType: file.type || (isEpub ? 'application/epub+zip' : 'application/pdf')
+          })
         });
-        const urlData = await urlRes.json();
-        if (urlData.uploadUrl) {
-          // Direct PUT to R2
-          const putRes = await fetch(urlData.uploadUrl, {
+
+        if (urlRes.ok) {
+          const { uploadUrl, fileKey: key } = await urlRes.json();
+          fileKey = key;
+          await fetch(uploadUrl, {
             method: 'PUT',
-            headers: { 'Content-Type': contentType },
+            headers: { 'Content-Type': file.type || (isEpub ? 'application/epub+zip' : 'application/pdf') },
             body: file
           });
-          if (putRes.ok) {
-            fileKey = urlData.fileKey;
-          } else {
-            console.warn("R2 PUT upload failed with status:", putRes.status);
-          }
         }
       } catch (uploadErr) {
-        console.warn("Cloud upload warning, proceeding with local fallback:", uploadErr);
+        console.warn("Cloud R2 upload skipped or failed, working with local cache:", uploadErr);
       }
 
-      // 2. Save document metadata to D1
       try {
+        let token: string | null = null;
+        try { token = await getToken(); } catch (e) {}
+        const postHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (token) postHeaders['Authorization'] = `Bearer ${token}`;
+
         await fetch('/api/documents', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: postHeaders,
           body: JSON.stringify({
             id,
-            type: importCategory,
-            title,
-            author: 'Imported Document',
+            type: category,
+            title: cleanTitle,
+            author: '',
             fileName: file.name,
             fileKey,
-            totalProgress: ''
+            percentage: 0
           })
         });
       } catch (d1Err) {
-        console.warn("D1 metadata save warning:", d1Err);
+        console.warn("Cloud D1 metadata save failed:", d1Err);
       }
 
-      // 3. Cache locally in localforage for instant zero-latency loading
       const newBook: BookMetadata = {
         id,
-        title,
-        author: "Imported Document",
-        type: isPdf ? 'pdf' : 'epub',
-        category: importCategory,
+        title: cleanTitle,
+        type,
+        category,
         lastReadAt: Date.now(),
         progress: 0,
-        currentLocation: isPdf ? 1 : 0,
-        totalSize: 0
+        currentLocation: isEpub ? 0 : 1,
+        totalSize: file.size
       };
 
       const currentLib = await localforage.getItem<BookMetadata[]>('quiet_library') || [];
-      currentLib.push(newBook);
+      currentLib.unshift(newBook);
       await localforage.setItem('quiet_library', currentLib);
-      await localforage.setItem(`quiet_book_${id}`, file);
-      
+
+      setShowImportModal(false);
       router.push(`/reader?id=${id}`);
-    } catch (err: any) {
-      console.error("Error saving file:", err);
-      alert("Could not process this file: " + (err.message || 'Unknown error'));
+    } catch (e) {
+      console.error("Failed to process file:", e);
+      alert("Failed to process file, please try again.");
     } finally {
       setIsExtracting(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) processFile(file);
+    if (e.target.files && e.target.files[0]) {
+      processFile(e.target.files[0]);
+    }
   };
 
   const handlePasteSave = async () => {
@@ -352,9 +361,8 @@ export default function Home() {
     setIsExtracting(true);
     try {
       const title = pastedTitle.trim() || pastedText.trim().split('\n')[0].slice(0, 50) || 'Pasted Article';
-      
-      // 1. Cloud Save to D1
       let docId = Date.now().toString();
+
       try {
         let token: string | null = null;
         try { token = await getToken(); } catch (e) {}
@@ -368,7 +376,8 @@ export default function Home() {
             id: docId,
             type: 'article',
             title: title,
-            author: 'Pasted Text',
+            author: '',
+            source: 'ARTICLE',
             fileName: `${title.slice(0, 20)}.txt`,
             fileKey: '',
             content: pastedText,
@@ -380,18 +389,15 @@ export default function Home() {
           if (cloudData.document?.id) {
             docId = cloudData.document.id;
           }
-        } else {
-          console.warn("Cloud save non-ok response:", await cloudRes.text());
         }
       } catch (cloudErr) {
         console.warn("Cloud save failed, falling back to local:", cloudErr);
       }
 
-      // 2. Local cache in localforage
       const newDoc: BookMetadata = {
         id: docId,
         title: title,
-        author: 'Pasted Text',
+        author: '',
         type: 'text',
         category: 'article',
         lastReadAt: Date.now(),
@@ -404,7 +410,6 @@ export default function Home() {
       currentLib.unshift(newDoc);
       await localforage.setItem('quiet_library', currentLib);
 
-      // Save content for offline / instant reader
       const blob = new Blob([pastedText], { type: 'text/plain' });
       await localforage.setItem(`quiet_book_${docId}`, blob);
 
@@ -429,22 +434,6 @@ export default function Home() {
     }
   };
 
-  const handleDelete = async (e: React.MouseEvent, id: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (confirm("Remove this document from library?")) {
-      try {
-        await fetch(`/api/documents/${id}`, { method: 'DELETE' });
-      } catch (e) {
-        console.error("Failed to delete document from cloud:", e);
-      }
-      const currentLib = library.filter(b => b.id !== id);
-      await localforage.setItem('quiet_library', currentLib);
-      await localforage.removeItem(`quiet_book_${id}`);
-      setLibrary(currentLib);
-    }
-  };
-
   const handleSaveTitle = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!editingDoc || !newTitle.trim() || isSavingTitle) return;
@@ -452,7 +441,6 @@ export default function Home() {
     const trimmedTitle = newTitle.trim();
 
     try {
-      // 1. Update in Cloudflare D1
       let token: string | null = null;
       try { token = await getToken(); } catch (e) {}
       const patchHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -464,7 +452,6 @@ export default function Home() {
         body: JSON.stringify({ title: trimmedTitle }),
       });
 
-      // 2. Update in localforage quiet_library
       const currentLib = await localforage.getItem<BookMetadata[]>('quiet_library') || [];
       const updatedLib = currentLib.map(item => 
         item.id === editingDoc.id ? { ...item, title: trimmedTitle } : item
@@ -475,7 +462,7 @@ export default function Home() {
       setEditingDoc(null);
     } catch (err) {
       console.error('Failed to update title:', err);
-      alert('保存失败，请稍后重试');
+      alert('Failed to save title. Please try again.');
     } finally {
       setIsSavingTitle(false);
     }
@@ -487,55 +474,76 @@ export default function Home() {
   const mostRecentBook = books[0];
   const mostRecentArticle = articles[0];
 
-  const daysOfWeek = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-  const activeDays = [0, 1, 2, 3, 5]; // Dummy streak data
+  const totalDue = libStats.dueWords + libStats.duePhrases;
 
   return (
-    <div className="min-h-screen bg-[#FAF9F6] text-[#1C1C1C] font-sans selection:bg-[#E2E8F0]">
-      {/* Top Navigation */}
-      <nav className="border-b border-[#E5E5E5] bg-white/50 backdrop-blur-md sticky top-0 z-40">
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+    <div className="min-h-screen bg-[#F6F4EE] text-[#1C1C1C] font-sans selection:bg-[#E2E8F0]">
+      {/* Refined Navigation Bar */}
+      <nav className="border-b border-[#E7E2D6] bg-[#FAF8F5]/90 backdrop-blur-md sticky top-0 z-40 transition-all">
+        <div className="max-w-6xl mx-auto px-6 h-18 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-[#111827] rounded-lg flex items-center justify-center">
-              <BookOpen className="text-white w-4 h-4" />
+            <div className="w-9 h-9 bg-[#1E293B] rounded-xl flex items-center justify-center text-white shadow-xs">
+              <BookOpen className="w-4.5 h-4.5" />
             </div>
-            <span className="font-serif font-bold text-lg tracking-tight">Quiet Reading Tracker</span>
+            <div>
+              <span className="font-serif font-bold text-lg tracking-tight text-[#111827] block leading-tight">
+                Quiet Reading Tracker
+              </span>
+              <span className="text-[10px] uppercase font-bold tracking-[0.15em] text-[#8C7A6B]">
+                Personal Study Sanctuary
+              </span>
+            </div>
           </div>
-          <div className="flex items-center gap-4">
-            <button onClick={() => setShowImportModal(true)} className="flex items-center gap-2 bg-[#111827] text-white px-4 py-2 rounded-full text-sm font-bold shadow-sm hover:shadow-md transition-all">
-              <Plus className="w-4 h-4" /> Import
+
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setShowImportModal(true)} 
+              className="flex items-center gap-2 bg-[#1E293B] hover:bg-[#334155] text-white px-4 py-2 rounded-xl text-xs md:text-sm font-semibold shadow-xs hover:shadow transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Import</span>
             </button>
-            <button className="text-[#6B7280] hover:text-[#111827] transition-colors p-2"><Search className="w-5 h-5" /></button>
-            <button className="text-[#6B7280] hover:text-[#111827] transition-colors p-2"><Settings className="w-5 h-5" /></button>
             <Show when="signed-out">
               <SignInButton mode="modal">
-                <button className="text-sm font-bold text-[#111827] hover:text-[#3D5A80] transition-colors ml-2">Sign In</button>
+                <button className="text-xs md:text-sm font-semibold text-[#111827] hover:text-[#3D5A80] transition-colors px-2 py-1 cursor-pointer">
+                  Sign In
+                </button>
               </SignInButton>
             </Show>
             <Show when="signed-in">
-              <div className="ml-2">
-                <UserButton  />
+              <div className="ml-1">
+                <UserButton />
               </div>
             </Show>
           </div>
         </div>
       </nav>
 
-      <div className="max-w-6xl mx-auto p-6 md:p-12 space-y-12">
-        {/* Header & Habits Section */}
-        <header className="flex flex-col lg:flex-row lg:justify-between lg:items-end gap-10 border-b border-[#E5E5E5] pb-10">
-          <div className="max-w-2xl">
-            <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4 font-serif text-[#111827]">Welcome Back</h1>
-            <p className="text-[#6B7280] text-lg font-serif italic">"For us, there is only the trying. The rest is not our business." <span className="text-sm not-italic ml-2">— T.S. Eliot</span></p>
-          </div>
-          
-          {/* Restored Habit Trackers */}
-          <div className="flex gap-4 overflow-x-auto pb-2 -mx-6 px-6 lg:mx-0 lg:px-0 lg:pb-0 hide-scrollbar">
-            {/* Daily Goal */}
-            <div className="bg-white px-8 py-6 rounded-3xl border border-[#E5E5E5] flex items-center gap-8 min-w-[320px] shadow-sm hover:shadow-md transition-shadow">
-              <div className="relative w-16 h-16 flex items-center justify-center shrink-0">
+      <div className="max-w-6xl mx-auto p-6 md:p-12 space-y-16">
+        {/* 1. Hero & Morning Dispatch (Magazine Masthead Layout) */}
+        <header className="border-b border-[#E7E2D6] pb-12">
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8">
+            <div className="max-w-2xl space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono font-bold tracking-[0.2em] text-[#8C7A6B] bg-[#EFECE6] px-2.5 py-0.5 rounded uppercase">
+                  {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
+                </span>
+                <span className="text-xs text-[#8C7A6B] font-serif">· Reading Dispatch</span>
+              </div>
+              <h1 className="text-4xl md:text-5xl font-bold tracking-tight font-serif text-[#111827] leading-[1.15]">
+                Welcome Back to Your Desk
+              </h1>
+              <p className="text-[#6B7280] text-base md:text-lg font-serif italic border-l-2 border-[#D7CCC8] pl-3 py-0.5">
+                &ldquo;For us, there is only the trying. The rest is not our business.&rdquo; 
+                <span className="text-xs not-italic text-[#8C7A6B] ml-2 font-mono">— T.S. Eliot</span>
+              </p>
+            </div>
+
+            {/* Seamless Daily Reading Goal & Streak Widget */}
+            <div className="flex items-center gap-6 bg-[#FAF8F5] border border-[#E7E2D6] rounded-2xl px-6 py-4 shadow-2xs">
+              <div className="relative w-14 h-14 flex items-center justify-center shrink-0">
                 <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
-                  <path className="text-[#F3F4F6]" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3" />
+                  <path className="text-[#E7E2D6]" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3" />
                   <path className="text-[#3D5A80]" strokeDasharray={`${Math.min((readingStats.todayMins / 60) * 100, 100)}, 100`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
                 </svg>
                 <div className="absolute flex items-center justify-center">
@@ -543,291 +551,573 @@ export default function Home() {
                 </div>
               </div>
               <div>
-                <h3 className="text-[11px] font-bold tracking-widest uppercase text-[#6B7280] mb-1">Today's Reading</h3>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-serif font-bold text-[#111827]">{readingStats.todayMins}</span>
-                  <span className="text-sm text-[#6B7280] font-medium">/ 60 mins</span>
+                <span className="text-[10px] font-mono font-bold tracking-widest uppercase text-[#8C7A6B] block">
+                  Today&apos;s Reading
+                </span>
+                <div className="flex items-baseline gap-1 mt-0.5">
+                  <span className="text-2xl font-serif font-bold text-[#111827]">{readingStats.todayMins}</span>
+                  <span className="text-xs text-[#8C7A6B] font-mono">/ 60 mins</span>
+                </div>
+              </div>
+              <div className="h-10 w-[1px] bg-[#E7E2D6] mx-1" />
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-[#FFF1EB] flex items-center justify-center text-[#C2410C]">
+                  <Flame className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-[10px] font-mono font-bold tracking-widest uppercase text-[#8C7A6B] block">Streak</span>
+                  <span className="text-base font-bold text-[#111827]">{readingStats.streak} Days</span>
                 </div>
               </div>
             </div>
+          </div>
 
-                      </div>
+          {/* Reading Rhythm Strip (Seamless 30-Day Dots) */}
+          <div className="mt-8 pt-6 border-t border-[#EAE5DA] flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-2 text-xs font-mono text-[#8C7A6B]">
+              <span className="uppercase font-bold tracking-wider">30-Day Reading Rhythm</span>
+              <span>·</span>
+              <span className="italic font-serif">Consistency over intensity</span>
+            </div>
+            {(() => {
+              const colors = ['#C2410C', '#3D5A80', '#15803D', '#D97706', '#818CF8', '#0F172A'];
+              const days = displayDays.length > 0 ? displayDays : Array.from({ length: 30 }).map((_, i) => 'placeholder-' + i);
+              return (
+                <div className="flex items-center gap-1.5 md:gap-2 flex-wrap">
+                  {days.map((dateStr, i) => {
+                    const isPlaceholder = dateStr.startsWith('placeholder-');
+                    const isRead = !isPlaceholder && readingStats.history && readingStats.history[dateStr] > 0;
+                    const color = colors[i % colors.length];
+                    return (
+                      <div 
+                        key={dateStr}
+                        className="w-3.5 h-3.5 md:w-4 md:h-4 rounded-full transition-all border shadow-2xs"
+                        style={{
+                          backgroundColor: isRead ? color : 'transparent',
+                          borderColor: isRead ? color : '#DDD6CE',
+                          opacity: isRead ? 1 : 0.4
+                        }}
+                        title={!isPlaceholder ? dateStr : undefined}
+                      />
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
         </header>
 
-        {/* Currently Reading Section */}
-        <section>
-          <h2 className="text-2xl font-serif font-semibold text-[#111827] mb-6">Pick up where you left off</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            
-            {/* Most Recent Book */}
+        {/* 2. Pick Up Where You Left Off (Physical Reading Showcase) */}
+        <section className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-mono font-bold tracking-[0.2em] text-[#8C7A6B] uppercase">
+                Active Desk
+              </span>
+              <h2 className="text-2xl font-serif font-bold text-[#111827]">
+                Pick Up Where You Left Off
+              </h2>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Active Book Showcase (Realistic Miniature Hardcover on Desk) */}
             {mostRecentBook ? (
-              <div className="group flex bg-white rounded-3xl border border-[#E5E5E5] overflow-hidden hover:shadow-xl transition-all hover:-translate-y-1">
-                <Link href={`/reader?id=${mostRecentBook.id}`} className="w-32 bg-[#3D5A80]/10 flex flex-col items-center justify-center p-4 border-r border-[#E5E5E5] shrink-0">
-                  <Book className="w-10 h-10 text-[#3D5A80] mb-2" />
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#3D5A80]">Book</span>
-                </Link>
-                <div className="p-6 flex-1 flex flex-col justify-between min-w-0">
-                  <div>
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <Link href={`/reader?id=${mostRecentBook.id}`} className="font-serif font-bold text-xl text-[#111827] line-clamp-2 leading-tight hover:text-[#3D5A80] transition-colors">
+              <div className="group relative bg-[#FAF8F5] border border-[#E7E2D6] rounded-3xl p-6 md:p-8 hover:shadow-lg transition-all duration-300">
+                <div className="flex items-start gap-6">
+                  {/* Miniature 3D Hardcover Book */}
+                  <Link 
+                    href={`/reader?id=${mostRecentBook.id}`}
+                    className="shrink-0 block group-hover:-translate-y-1 transition-transform duration-300"
+                  >
+                    <div className="w-24 md:w-28 aspect-[1/1.45] rounded-r-md rounded-l-xs bg-gradient-to-br from-[#1E293B] via-[#0F172A] to-[#090D16] border border-[#334155] p-3 flex flex-col justify-between relative shadow-[4px_12px_20px_rgba(0,0,0,0.3)] select-none">
+                      {/* Spine crease shadow */}
+                      <div className="absolute left-0 top-0 bottom-0 w-2.5 bg-gradient-to-r from-black/50 to-transparent pointer-events-none rounded-l-xs" />
+                      <div className="absolute left-2 top-0 bottom-0 w-[1px] bg-white/15 pointer-events-none" />
+                      {/* Paper edge right */}
+                      <div className="absolute -right-1 top-1 bottom-1 w-1 bg-[#D7CCC8] rounded-r-xs" />
+                      
+                      {/* Gilt header */}
+                      <div className="text-center pt-0.5">
+                        <span className="text-[7px] font-mono font-bold uppercase tracking-widest text-sky-400/80">
+                          {mostRecentBook.type.toUpperCase()}
+                        </span>
+                      </div>
+                      
+                      {/* Book title */}
+                      <div className="my-auto text-center px-0.5">
+                        <span className="font-serif font-bold text-[10px] md:text-xs text-slate-100 line-clamp-3 leading-tight">
+                          {mostRecentBook.title}
+                        </span>
+                      </div>
+
+                      {/* Footer ribbon */}
+                      <div className="border-t border-white/10 pt-1 text-center">
+                        <span className="text-[8px] font-mono text-slate-400 font-bold">
+                          {mostRecentBook.progress}%
+                        </span>
+                      </div>
+                      {/* Ribbon */}
+                      <div className="absolute -top-1 right-2 w-2 h-4 bg-sky-500 shadow-xs rounded-b-xs" />
+                    </div>
+                  </Link>
+
+                  {/* Open Typography & Meta */}
+                  <div className="flex-1 min-w-0 flex flex-col justify-between py-1">
+                    <div>
+                      <div className="flex items-start justify-between gap-2 mb-1.5">
+                        <span className="text-[10px] font-mono font-bold tracking-widest uppercase text-[#3D5A80] bg-[#3D5A80]/10 px-2 py-0.5 rounded">
+                          Book in Progress
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingDoc({ id: mostRecentBook.id, title: mostRecentBook.title, type: 'book' });
+                            setNewTitle(mostRecentBook.title);
+                          }}
+                          className="p-1.5 text-[#9CA3AF] hover:text-[#3D5A80] hover:bg-black/5 rounded-lg transition-colors cursor-pointer"
+                          title="Edit Title"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      <Link 
+                        href={`/reader?id=${mostRecentBook.id}`} 
+                        className="font-serif font-bold text-lg md:text-xl text-[#111827] line-clamp-2 leading-snug hover:text-[#3D5A80] transition-colors block"
+                      >
                         {mostRecentBook.title}
                       </Link>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setEditingDoc({ id: mostRecentBook.id, title: mostRecentBook.title, type: 'book' });
-                          setNewTitle(mostRecentBook.title);
-                        }}
-                        className="p-1.5 text-[#9CA3AF] hover:text-[#3D5A80] hover:bg-[#3D5A80]/10 rounded-lg transition-colors shrink-0 cursor-pointer"
-                        title="修改书名 / Edit title"
+                      {mostRecentBook.author && (
+                        <p className="text-xs text-[#6B7280] font-serif italic mt-1 line-clamp-1">
+                          {mostRecentBook.author}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-[#EAE5DA]">
+                      <div className="flex justify-between items-center text-xs mb-1.5">
+                        <span className="font-mono text-[#8C7A6B] text-[11px]">Reading Progress</span>
+                        <span className="font-mono font-bold text-[#111827]">{mostRecentBook.progress}%</span>
+                      </div>
+                      <div className="w-full bg-[#E5E5E5] rounded-full h-1.5 overflow-hidden mb-3">
+                        <div 
+                          className="bg-[#3D5A80] h-full rounded-full transition-all" 
+                          style={{ width: `${Math.min(100, mostRecentBook.progress)}%` }} 
+                        />
+                      </div>
+                      <Link 
+                        href={`/reader?id=${mostRecentBook.id}`}
+                        className="inline-flex items-center gap-1.5 text-xs font-bold text-[#3D5A80] hover:text-[#283E58] transition-colors"
                       >
-                        <Pencil className="w-4 h-4" />
-                      </button>
+                        <span>Resume Book</span>
+                        <ArrowUpRight className="w-3.5 h-3.5" />
+                      </Link>
                     </div>
-                    <p className="text-sm text-[#6B7280]">{mostRecentBook.author}</p>
                   </div>
-                  <Link href={`/reader?id=${mostRecentBook.id}`} className="mt-6 block">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-xs font-bold text-[#6B7280]">Status</span>
-                      <span className="text-xs font-bold text-[#111827] uppercase tracking-widest">{mostRecentBook.isCompleted ? 'Completed' : mostRecentBook.progress > 0 ? `${mostRecentBook.progress}% Read` : 'New'}</span>
-                    </div>
-                    <div className="w-full bg-[#F3F4F6] rounded-full h-1.5 overflow-hidden">
-                      <div className="bg-[#3D5A80] h-full rounded-full" style={{ width: `${mostRecentBook.isCompleted ? 100 : mostRecentBook.progress}%` }}></div>
-                    </div>
-                  </Link>
                 </div>
               </div>
             ) : (
-              <div className="bg-white rounded-3xl border border-dashed border-[#D1D5DB] p-8 flex flex-col items-center justify-center text-center text-[#6B7280]">
-                <Book className="w-8 h-8 mb-3 opacity-20" />
-                <p className="text-sm font-medium">No books in progress.</p>
+              <div className="border border-dashed border-[#D7CCC8] rounded-3xl p-8 flex flex-col items-center justify-center text-center text-[#8C7A6B] bg-[#FAF8F5]/50">
+                <Book className="w-8 h-8 mb-2 opacity-30 text-[#3D5A80]" />
+                <h3 className="font-serif font-bold text-base text-[#111827] mb-1">No Books in Progress</h3>
+                <p className="text-xs text-[#8C7A6B] mb-4">Import an EPUB or PDF book to display here.</p>
+                <button
+                  onClick={() => { setImportCategory('book'); setShowImportModal(true); }}
+                  className="px-4 py-2 bg-[#1E293B] text-white rounded-xl text-xs font-semibold cursor-pointer"
+                >
+                  Import Book
+                </button>
               </div>
             )}
 
-            {/* Most Recent Article */}
+            {/* Active Article Showcase (Folded Editorial Issue on Desk) */}
             {mostRecentArticle ? (
-              <div className="group flex bg-white rounded-3xl border border-[#E5E5E5] overflow-hidden hover:shadow-xl transition-all hover:-translate-y-1">
-                <Link href={`/reader?id=${mostRecentArticle.id}`} className="w-32 bg-[#E07A5F]/10 flex flex-col items-center justify-center p-4 border-r border-[#E5E5E5] shrink-0">
-                  <FileText className="w-10 h-10 text-[#E07A5F] mb-2" />
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-[#E07A5F]">Article</span>
-                </Link>
-                <div className="p-6 flex-1 flex flex-col justify-between min-w-0">
-                  <div>
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <Link href={`/reader?id=${mostRecentArticle.id}`} className="font-serif font-bold text-xl text-[#111827] line-clamp-2 leading-tight hover:text-[#E07A5F] transition-colors">
+              <div className="group relative bg-[#FAF8F5] border border-[#E7E2D6] rounded-3xl p-6 md:p-8 hover:shadow-lg transition-all duration-300">
+                <div className="flex items-start gap-6">
+                  {/* Miniature Editorial Issue Cover */}
+                  <Link 
+                    href={`/reader?id=${mostRecentArticle.id}`}
+                    className="shrink-0 block group-hover:-translate-y-1 transition-transform duration-300"
+                  >
+                    <div className="w-24 md:w-28 aspect-[1/1.45] rounded-md bg-[#FFFDF9] border border-[#E7DFD5] p-3 flex flex-col justify-between relative shadow-[4px_12px_20px_rgba(0,0,0,0.12)] select-none">
+                      {/* Spine & staple stitch accent */}
+                      <div className="absolute left-0 top-0 bottom-0 w-2 bg-gradient-to-r from-black/5 to-transparent pointer-events-none" />
+                      <div className="absolute left-1 top-4 w-0.5 h-2 bg-[#94A3B8] rounded-xs" />
+                      <div className="absolute left-1 bottom-4 w-0.5 h-2 bg-[#94A3B8] rounded-xs" />
+
+                      <div className="text-center pt-0.5">
+                        <span className="text-[7px] font-mono font-bold uppercase tracking-wider text-[#C2410C]">
+                          ESSAY
+                        </span>
+                      </div>
+
+                      <div className="my-auto text-center px-0.5">
+                        <span className="font-serif font-bold text-[10px] md:text-xs text-[#1E293B] line-clamp-3 leading-tight">
+                          {mostRecentArticle.title}
+                        </span>
+                      </div>
+
+                      <div className="border-t border-[#E7E2D6] pt-1 text-center">
+                        <span className="text-[7px] font-mono text-[#15803D] font-bold">
+                          {mostRecentArticle.isCompleted ? 'COMPLETED' : `${mostRecentArticle.progress}%`}
+                        </span>
+                      </div>
+                    </div>
+                  </Link>
+
+                  {/* Open Typography & Meta */}
+                  <div className="flex-1 min-w-0 flex flex-col justify-between py-1">
+                    <div>
+                      <div className="flex items-start justify-between gap-2 mb-1.5">
+                        <span className="text-[10px] font-mono font-bold tracking-widest uppercase text-[#C2410C] bg-[#FFF1EB] px-2 py-0.5 rounded">
+                          Article in Progress
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingDoc({ id: mostRecentArticle.id, title: mostRecentArticle.title, type: 'article' });
+                            setNewTitle(mostRecentArticle.title);
+                          }}
+                          className="p-1.5 text-[#9CA3AF] hover:text-[#C2410C] hover:bg-black/5 rounded-lg transition-colors cursor-pointer"
+                          title="Edit Title"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      <Link 
+                        href={`/reader?id=${mostRecentArticle.id}`} 
+                        className="font-serif font-bold text-lg md:text-xl text-[#111827] line-clamp-2 leading-snug hover:text-[#C2410C] transition-colors block"
+                      >
                         {mostRecentArticle.title}
                       </Link>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setEditingDoc({ id: mostRecentArticle.id, title: mostRecentArticle.title, type: 'article' });
-                          setNewTitle(mostRecentArticle.title);
-                        }}
-                        className="p-1.5 text-[#9CA3AF] hover:text-[#E07A5F] hover:bg-[#E07A5F]/10 rounded-lg transition-colors shrink-0 cursor-pointer"
-                        title="修改文章名 / Edit title"
+                      {mostRecentArticle.author && (
+                        <p className="text-xs text-[#6B7280] font-serif italic mt-1 line-clamp-1">
+                          {mostRecentArticle.author}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-[#EAE5DA]">
+                      <div className="flex justify-between items-center text-xs mb-1.5">
+                        <span className="font-mono text-[#8C7A6B] text-[11px]">Reading Progress</span>
+                        <span className="font-mono font-bold text-[#111827]">{mostRecentArticle.progress}%</span>
+                      </div>
+                      <div className="w-full bg-[#E5E5E5] rounded-full h-1.5 overflow-hidden mb-3">
+                        <div 
+                          className="bg-[#C2410C] h-full rounded-full transition-all" 
+                          style={{ width: `${Math.min(100, mostRecentArticle.progress)}%` }} 
+                        />
+                      </div>
+                      <Link 
+                        href={`/reader?id=${mostRecentArticle.id}`}
+                        className="inline-flex items-center gap-1.5 text-xs font-bold text-[#C2410C] hover:text-[#9A3412] transition-colors"
                       >
-                        <Pencil className="w-4 h-4" />
-                      </button>
+                        <span>Resume Article</span>
+                        <ArrowUpRight className="w-3.5 h-3.5" />
+                      </Link>
                     </div>
-                    <p className="text-sm text-[#6B7280]">{mostRecentArticle.author}</p>
                   </div>
-                  <Link href={`/reader?id=${mostRecentArticle.id}`} className="mt-6 block">
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-xs font-bold text-[#6B7280]">Status</span>
-                      <span className="text-xs font-bold text-[#111827] uppercase tracking-widest">{mostRecentArticle.isCompleted ? 'Completed' : mostRecentArticle.progress > 0 ? `${mostRecentArticle.progress}% Read` : 'New'}</span>
-                    </div>
-                    <div className="w-full bg-[#F3F4F6] rounded-full h-1.5 overflow-hidden">
-                      <div className="bg-[#E07A5F] h-full rounded-full" style={{ width: `${mostRecentArticle.isCompleted ? 100 : mostRecentArticle.progress}%` }}></div>
-                    </div>
-                  </Link>
                 </div>
               </div>
             ) : (
-              <div className="bg-white rounded-3xl border border-dashed border-[#D1D5DB] p-8 flex flex-col items-center justify-center text-center text-[#6B7280]">
-                <FileText className="w-8 h-8 mb-3 opacity-20" />
-                <p className="text-sm font-medium">No articles in progress.</p>
+              <div className="border border-dashed border-[#D7CCC8] rounded-3xl p-8 flex flex-col items-center justify-center text-center text-[#8C7A6B] bg-[#FAF8F5]/50">
+                <FileText className="w-8 h-8 mb-2 opacity-30 text-[#C2410C]" />
+                <h3 className="font-serif font-bold text-base text-[#111827] mb-1">No Articles in Progress</h3>
+                <p className="text-xs text-[#8C7A6B] mb-4">Paste text or upload a document to read here.</p>
+                <button
+                  onClick={() => { setImportCategory('article'); setShowImportModal(true); }}
+                  className="px-4 py-2 bg-[#C2410C] text-white rounded-xl text-xs font-semibold cursor-pointer"
+                >
+                  Add Article
+                </button>
               </div>
             )}
-
           </div>
         </section>
 
-        {/* SRS Widget & Shelves Grid */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-10 border-t border-[#E5E5E5] pt-10">
-          
-          {/* Shelves (2 columns) */}
-          <div className="xl:col-span-2 space-y-12">
-            
-            
-            {/* Unified Shelves Navigation */}
-            <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Link href="/library/books" className="group bg-white rounded-3xl p-8 border border-[#E5E5E5] shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all flex flex-col items-center justify-center min-h-[220px]">
-                <div className="w-16 h-16 rounded-full bg-[#3D5A80]/10 flex items-center justify-center mb-6 text-[#3D5A80] group-hover:scale-110 transition-transform">
-                  <Book className="w-8 h-8" />
-                </div>
-                <h2 className="text-2xl font-serif font-bold text-[#111827] mb-2 group-hover:text-[#3D5A80] transition-colors">Book Shelf</h2>
-                <p className="text-[#6B7280] text-sm text-center">Browse your imported books</p>
-                <span className="mt-4 text-[10px] font-bold tracking-widest uppercase text-[#9CA3AF] bg-[#F3F4F6] px-3 py-1 rounded-full">
-                  {books.length} Books
-                </span>
-              </Link>
+        {/* 3. The Library Portals & Study Ledger (Split Section) */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-10 pt-4">
+          {/* Left Column: Living Shelves Showcases (2 cols) */}
+          <div className="lg:col-span-2 space-y-8">
+            <div>
+              <span className="text-[10px] font-mono font-bold tracking-[0.2em] text-[#8C7A6B] uppercase">
+                Shelves & Archives
+              </span>
+              <h2 className="text-2xl font-serif font-bold text-[#111827]">
+                Your Shelves
+              </h2>
+            </div>
 
-              <Link href="/library/articles" className="group bg-white rounded-3xl p-8 border border-[#E5E5E5] shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all flex flex-col items-center justify-center min-h-[220px]">
-                <div className="w-16 h-16 rounded-full bg-[#E07A5F]/10 flex items-center justify-center mb-6 text-[#E07A5F] group-hover:scale-110 transition-transform">
-                  <FileText className="w-8 h-8" />
-                </div>
-                <h2 className="text-2xl font-serif font-bold text-[#111827] mb-2 group-hover:text-[#E07A5F] transition-colors">Article Shelf</h2>
-                <p className="text-[#6B7280] text-sm text-center">Browse short-form articles</p>
-                <span className="mt-4 text-[10px] font-bold tracking-widest uppercase text-[#9CA3AF] bg-[#F3F4F6] px-3 py-1 rounded-full">
-                  {articles.length} Articles
-                </span>
-              </Link>
-            </section>
-
-            {/* Wide Consistency Tracker */}
-            <section className="bg-white p-6 rounded-3xl border border-[#E5E5E5] shadow-sm flex items-center justify-between mt-6 hover:shadow-md transition-shadow">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2 bg-[#E07A5F]/10 px-3 py-1.5 rounded-xl">
-                  <Flame className="w-5 h-5 text-[#E07A5F]" />
-                  <span className="text-sm font-bold text-[#E07A5F] tracking-wide">{readingStats.streak} Day Streak</span>
-                </div>
-                <span className="text-[11px] font-bold tracking-widest uppercase text-[#9CA3AF] hidden md:block">30-Day Habit</span>
-              </div>
-              {(() => {
-                const colors = ['#E07A5F', '#3D5A80', '#5B8266', '#F6CA83', '#F4A261', '#293241'];
-                // If not mounted/calculated yet, render empty placeholders to avoid layout shift
-                const days = displayDays.length > 0 ? displayDays : Array.from({ length: 30 }).map((_, i) => 'placeholder-' + i);
-                return (
-                  <div className="grid grid-cols-10 gap-1.5 md:gap-2 ml-auto shrink-0 py-1">
-                    {days.map((dateStr, i) => {
-                      const isPlaceholder = dateStr.startsWith('placeholder-');
-                      const isRead = !isPlaceholder && readingStats.history && readingStats.history[dateStr] > 0;
-                      const color = colors[i % colors.length];
-                      return (
-                        <div 
-                          key={dateStr}
-                          className={`w-4 h-4 md:w-5 md:h-5 rounded-full transition-all border shadow-sm`}
-                          style={{
-                            backgroundColor: isRead ? color : 'transparent',
-                            borderColor: isRead ? color : '#E5E5E5',
-                            opacity: isRead ? 1 : 0.5
-                          }}
-                          title={!isPlaceholder ? dateStr : undefined}
-                        />
-                      );
-                    })}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Book Shelf Showcase Portal */}
+              <Link 
+                href="/library/books" 
+                className="group relative bg-[#FAF8F5] border border-[#E7E2D6] rounded-3xl p-6 flex flex-col justify-between hover:shadow-xl hover:-translate-y-1 transition-all overflow-hidden"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="text-[10px] font-mono font-bold tracking-widest uppercase text-[#3D5A80] bg-[#3D5A80]/10 px-2.5 py-0.5 rounded">
+                      Personal Library
+                    </span>
+                    <span className="text-xs font-mono font-bold text-[#111827]">
+                      {books.length} Volumes
+                    </span>
                   </div>
-                );
-              })()}
-            </section>
+                  <h3 className="font-serif font-bold text-xl text-[#111827] group-hover:text-[#3D5A80] transition-colors mb-1">
+                    Book Shelf
+                  </h3>
+                  <p className="text-xs text-[#6B7280] font-serif">
+                    Authentic 3D hardcover bindings & wooden shelves
+                  </p>
+                </div>
 
+                {/* Miniature Bookshelf Ledge with 3 Spines */}
+                <div className="mt-8 pt-4 relative">
+                  <div className="flex items-end justify-center gap-2 mb-[-2px] px-4">
+                    {/* Spine 1 */}
+                    <div className="w-9 h-20 rounded-t-xs bg-gradient-to-r from-[#1E293B] to-[#0F172A] border border-[#334155] shadow-md flex items-center justify-center">
+                      <span className="rotate-90 text-[7px] font-mono font-bold text-slate-300 uppercase tracking-widest">
+                        VOL. I
+                      </span>
+                    </div>
+                    {/* Spine 2 */}
+                    <div className="w-11 h-24 rounded-t-xs bg-gradient-to-r from-[#7F1D1D] to-[#5C1414] border border-[#991B1B] shadow-md flex items-center justify-center">
+                      <span className="rotate-90 text-[7px] font-mono font-bold text-red-200 uppercase tracking-widest">
+                        CLASSIC
+                      </span>
+                    </div>
+                    {/* Spine 3 */}
+                    <div className="w-10 h-22 rounded-t-xs bg-gradient-to-r from-[#14532D] to-[#0F3D21] border border-[#166534] shadow-md flex items-center justify-center">
+                      <span className="rotate-90 text-[7px] font-mono font-bold text-green-200 uppercase tracking-widest">
+                        FOLIO
+                      </span>
+                    </div>
+                  </div>
+                  {/* Miniature Wood Shelf Ledge */}
+                  <div className="h-2 w-full bg-gradient-to-r from-[#D7CCC8] via-[#EFEBE9] to-[#D7CCC8] border-t border-[#DFD3C3] rounded-t-xs" />
+                  <div className="h-3 w-full bg-gradient-to-b from-[#8D6E63] to-[#5D4037] shadow-sm rounded-b-xs" />
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-[#EAE5DA] flex items-center justify-between text-xs font-semibold text-[#3D5A80]">
+                  <span>Explore Book Shelf</span>
+                  <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </Link>
+
+              {/* Article Shelf Showcase Portal */}
+              <Link 
+                href="/library/articles" 
+                className="group relative bg-[#FAF8F5] border border-[#E7E2D6] rounded-3xl p-6 flex flex-col justify-between hover:shadow-xl hover:-translate-y-1 transition-all overflow-hidden"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="text-[10px] font-mono font-bold tracking-widest uppercase text-[#C2410C] bg-[#FFF1EB] px-2.5 py-0.5 rounded">
+                      Article Collection
+                    </span>
+                    <span className="text-xs font-mono font-bold text-[#111827]">
+                      {articles.length} Articles
+                    </span>
+                  </div>
+                  <h3 className="font-serif font-bold text-xl text-[#111827] group-hover:text-[#C2410C] transition-colors mb-1">
+                    Article Shelf
+                  </h3>
+                  <p className="text-xs text-[#6B7280] font-serif">
+                    Editorial magazine issues & long-form essays
+                  </p>
+                </div>
+
+                {/* Miniature Magazine Display Rack with 2 Overlapping Issues */}
+                <div className="mt-8 pt-4 relative">
+                  <div className="flex items-end justify-center mb-[-2px] px-4">
+                    {/* Issue 1 (Underneath, tilted) */}
+                    <div className="w-16 h-20 rounded-md bg-[#FFFDF9] border border-[#E7DFD5] p-1.5 shadow-md -rotate-6 translate-x-2">
+                      <div className="text-[6px] font-mono font-bold text-[#9A3412] uppercase border-b border-[#E7E2D6] pb-0.5">
+                        REVIEW
+                      </div>
+                      <div className="mt-2 text-[7px] font-serif font-bold text-[#1E293B] line-clamp-2">
+                        Modern Mind
+                      </div>
+                    </div>
+                    {/* Issue 2 (Top) */}
+                    <div className="w-18 h-24 rounded-md bg-[#F8F9FA] border border-[#DCE2EA] p-2 shadow-lg z-10 -translate-x-1">
+                      <div className="text-[6px] font-mono font-bold text-[#1E3A8A] uppercase border-b border-[#DCE2EA] pb-0.5">
+                        DISPATCH
+                      </div>
+                      <div className="mt-2 text-[8px] font-serif font-bold text-[#1E293B] line-clamp-3 leading-tight">
+                        The Long View on Reading
+                      </div>
+                    </div>
+                  </div>
+                  {/* Miniature Display Rack Ledge */}
+                  <div className="h-2 w-full bg-gradient-to-r from-[#D7CCC8] via-[#EFEBE9] to-[#D7CCC8] border-t border-[#DFD3C3] rounded-t-xs" />
+                  <div className="h-3 w-full bg-gradient-to-b from-[#8D6E63] to-[#5D4037] shadow-sm rounded-b-xs" />
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-[#EAE5DA] flex items-center justify-between text-xs font-semibold text-[#C2410C]">
+                  <span>Explore Article Shelf</span>
+                  <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </Link>
+            </div>
           </div>
 
-          {/* Right Column: SRS Review */}
-          <div className="space-y-6">
-            <section className="bg-white p-8 rounded-3xl border border-[#E5E5E5] sticky top-24 shadow-sm">
-              <h2 className="text-2xl font-serif font-semibold text-[#111827] mb-6">Knowledge Library</h2>
-              <div className="space-y-4">
-                <Link href="/review/words" className="flex items-center justify-between p-4 rounded-2xl bg-white hover:bg-[#F9FAFB] transition-all group border border-[#E5E5E5] hover:shadow-md hover:-translate-y-0.5">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-[#3D5A80]/10 text-[#3D5A80] flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <BookA className="w-6 h-6" />
+          {/* Right Column: Knowledge Study Ledger (Notebook Style) */}
+          <div className="space-y-4">
+            <div>
+              <span className="text-[10px] font-mono font-bold tracking-[0.2em] text-[#8C7A6B] uppercase">
+                Field Notes
+              </span>
+              <h2 className="text-2xl font-serif font-bold text-[#111827]">
+                Study Ledger
+              </h2>
+            </div>
+
+            {/* Open Ledger Notebook Page */}
+            <div className="bg-[#FAF8F5] border border-[#E7E2D6] rounded-3xl p-6 md:p-7 shadow-xs space-y-6">
+              <div className="border-b border-[#EAE5DA] pb-4">
+                <span className="text-xs font-serif italic text-[#8C7A6B]">
+                  Spaced Repetition & Vocabulary Memory
+                </span>
+              </div>
+
+              {/* Elegant Index Rows */}
+              <div className="space-y-3">
+                <Link 
+                  href="/review/words"
+                  className="flex items-center justify-between p-3.5 rounded-2xl bg-white border border-[#EAE5DA] hover:border-[#3D5A80]/40 hover:shadow-sm transition-all group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-[#3D5A80]/10 text-[#3D5A80] flex items-center justify-center group-hover:scale-105 transition-transform">
+                      <BookA className="w-5 h-5" />
                     </div>
                     <div>
-                      <span className="block font-bold text-sm text-[#111827] mb-1">Vocabulary</span>
-                      <span className="text-[10px] uppercase font-bold tracking-widest text-[#6B7280]">{libStats.words} Words</span>
+                      <span className="block font-bold text-sm text-[#111827]">Vocabulary</span>
+                      <span className="text-[10px] font-mono text-[#8C7A6B]">{libStats.words} collected</span>
                     </div>
                   </div>
-                  <span className={`text-[10px] font-bold px-3 py-1.5 rounded-full shadow-sm whitespace-nowrap shrink-0 ${libStats.dueWords > 0 ? 'bg-[#E07A5F] text-white' : 'bg-[#F3F4F6] text-[#6B7280]'}`}>
+                  <span className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg ${
+                    libStats.dueWords > 0 ? 'bg-[#C2410C] text-white' : 'bg-[#EFECE6] text-[#8C7A6B]'
+                  }`}>
                     {libStats.dueWords} Due
                   </span>
                 </Link>
 
-                <Link href="/review/phrases" className="flex items-center justify-between p-4 rounded-2xl bg-white hover:bg-[#F9FAFB] transition-all group border border-[#E5E5E5] hover:shadow-md hover:-translate-y-0.5">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-[#E07A5F]/10 text-[#E07A5F] flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <TextQuote className="w-6 h-6" />
+                <Link 
+                  href="/review/phrases"
+                  className="flex items-center justify-between p-3.5 rounded-2xl bg-white border border-[#EAE5DA] hover:border-[#C2410C]/40 hover:shadow-sm transition-all group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-[#FFF1EB] text-[#C2410C] flex items-center justify-center group-hover:scale-105 transition-transform">
+                      <TextQuote className="w-5 h-5" />
                     </div>
                     <div>
-                      <span className="block font-bold text-sm text-[#111827] mb-1">Expressions</span>
-                      <span className="text-[10px] uppercase font-bold tracking-widest text-[#6B7280]">{libStats.phrases} Phrases</span>
+                      <span className="block font-bold text-sm text-[#111827]">Expressions</span>
+                      <span className="text-[10px] font-mono text-[#8C7A6B]">{libStats.phrases} collocations</span>
                     </div>
                   </div>
-                  <span className={`text-[10px] font-bold px-3 py-1.5 rounded-full shadow-sm whitespace-nowrap shrink-0 ${libStats.duePhrases > 0 ? 'bg-[#E07A5F] text-white' : 'bg-[#F3F4F6] text-[#6B7280]'}`}>
+                  <span className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-lg ${
+                    libStats.duePhrases > 0 ? 'bg-[#C2410C] text-white' : 'bg-[#EFECE6] text-[#8C7A6B]'
+                  }`}>
                     {libStats.duePhrases} Due
                   </span>
                 </Link>
 
-                <Link href="/sentences" className="flex items-center justify-between p-4 rounded-2xl bg-white hover:bg-[#F9FAFB] transition-all group border border-[#E5E5E5] hover:shadow-md hover:-translate-y-0.5">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-[#5B8266]/10 text-[#5B8266] flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <Quote className="w-6 h-6" />
+                <Link 
+                  href="/sentences"
+                  className="flex items-center justify-between p-3.5 rounded-2xl bg-white border border-[#EAE5DA] hover:border-[#15803D]/40 hover:shadow-sm transition-all group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-[#DCFCE7] text-[#15803D] flex items-center justify-center group-hover:scale-105 transition-transform">
+                      <Bookmark className="w-5 h-5" />
                     </div>
                     <div>
-                      <span className="block font-bold text-sm text-[#111827] mb-1">Sentences</span>
-                      <span className="text-[10px] uppercase font-bold tracking-widest text-[#6B7280]">{libStats.sentences} Sentences</span>
+                      <span className="block font-bold text-sm text-[#111827]">Sentences</span>
+                      <span className="text-[10px] font-mono text-[#8C7A6B]">{libStats.sentences} exemplary</span>
                     </div>
                   </div>
-                  <ChevronRight className="w-5 h-5 text-[#D1D5DB] group-hover:text-[#111827] transition-colors" />
+                  <ChevronRight className="w-4 h-4 text-[#9CA3AF] group-hover:translate-x-1 transition-transform" />
                 </Link>
               </div>
-            </section>
-          </div>
 
+              {/* Review Call-to-Action */}
+              <div className="pt-2">
+                <Link
+                  href="/review/session"
+                  className="w-full py-3.5 bg-[#1E293B] hover:bg-[#334155] text-white rounded-2xl font-bold text-sm shadow-sm hover:shadow transition-all flex items-center justify-center gap-2 group cursor-pointer"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-300" />
+                  <span>Start Daily Review</span>
+                  {totalDue > 0 && (
+                    <span className="bg-amber-400 text-[#111827] text-[10px] font-mono font-bold px-2 py-0.5 rounded-full">
+                      {totalDue}
+                    </span>
+                  )}
+                </Link>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Import Modal */}
       {showImportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#111827]/40 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#111827]/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-[#FAF9F6] border border-[#E5E5E5] rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="flex justify-between items-center p-6 border-b border-[#E5E5E5] shrink-0">
               <h3 className="font-serif text-xl font-bold text-[#111827]">Add to Library</h3>
-              <button onClick={() => setShowImportModal(false)} className="text-[#6B7280] hover:text-[#111827] bg-[#F3F4F6] rounded-full p-2"><X className="w-4 h-4" /></button>
+              <button onClick={() => setShowImportModal(false)} className="text-[#6B7280] hover:text-[#111827] p-2 rounded-full hover:bg-black/5 cursor-pointer">
+                <X className="w-5 h-5" />
+              </button>
             </div>
-            <div className="p-8 flex-1 overflow-y-auto flex flex-col gap-8">
+            <div className="p-8 flex-1 overflow-y-auto flex flex-col gap-6">
               
               {/* Category Selector */}
               <div>
-                <h4 className="text-[11px] font-bold tracking-widest uppercase text-[#6B7280] mb-3">What are you importing?</h4>
-                <div className="flex gap-4">
+                <h4 className="text-xs font-mono font-bold tracking-widest uppercase text-[#8C7A6B] mb-3">Target Shelf</h4>
+                <div className="grid grid-cols-2 gap-4">
                   <button 
                     onClick={() => { setImportCategory('book'); setImportMethod('file'); }}
-                    className={`flex-1 flex flex-col items-center justify-center gap-3 p-6 rounded-2xl border-2 transition-all ${importCategory === 'book' ? 'border-[#3D5A80] bg-[#3D5A80]/5' : 'border-[#E5E5E5] hover:border-[#D1D5DB] bg-white'}`}
+                    className={`flex flex-col items-center justify-center gap-3 p-5 rounded-2xl border-2 transition-all cursor-pointer ${
+                      importCategory === 'book' ? 'border-[#3D5A80] bg-[#3D5A80]/5' : 'border-[#E5E5E5] hover:border-[#D1D5DB] bg-white'
+                    }`}
                   >
-                    <Book className={`w-8 h-8 ${importCategory === 'book' ? 'text-[#3D5A80]' : 'text-[#9CA3AF]'}`} />
-                    <span className={`font-bold ${importCategory === 'book' ? 'text-[#3D5A80]' : 'text-[#6B7280]'}`}>Book</span>
+                    <Book className={`w-7 h-7 ${importCategory === 'book' ? 'text-[#3D5A80]' : 'text-[#9CA3AF]'}`} />
+                    <span className={`font-bold text-sm ${importCategory === 'book' ? 'text-[#3D5A80]' : 'text-[#6B7280]'}`}>Book Shelf</span>
                   </button>
                   <button 
                     onClick={() => setImportCategory('article')}
-                    className={`flex-1 flex flex-col items-center justify-center gap-3 p-6 rounded-2xl border-2 transition-all ${importCategory === 'article' ? 'border-[#E07A5F] bg-[#E07A5F]/5' : 'border-[#E5E5E5] hover:border-[#D1D5DB] bg-white'}`}
+                    className={`flex flex-col items-center justify-center gap-3 p-5 rounded-2xl border-2 transition-all cursor-pointer ${
+                      importCategory === 'article' ? 'border-[#C2410C] bg-[#FFF1EB]' : 'border-[#E5E5E5] hover:border-[#D1D5DB] bg-white'
+                    }`}
                   >
-                    <FileText className={`w-8 h-8 ${importCategory === 'article' ? 'text-[#E07A5F]' : 'text-[#9CA3AF]'}`} />
-                    <span className={`font-bold ${importCategory === 'article' ? 'text-[#E07A5F]' : 'text-[#6B7280]'}`}>Article</span>
+                    <FileText className={`w-7 h-7 ${importCategory === 'article' ? 'text-[#C2410C]' : 'text-[#9CA3AF]'}`} />
+                    <span className={`font-bold text-sm ${importCategory === 'article' ? 'text-[#C2410C]' : 'text-[#6B7280]'}`}>Article Shelf</span>
                   </button>
                 </div>
               </div>
 
-              {/* If Article, show Method Toggle */}
+              {/* If Article, Method Toggle */}
               {importCategory === 'article' && (
-                <div className="flex gap-2 bg-[#F3F4F6] p-1.5 rounded-2xl">
+                <div className="flex gap-2 bg-[#EFECE6] p-1.5 rounded-xl border border-[#E2DDD3]">
                   <button
                     type="button"
                     onClick={() => setImportMethod('file')}
-                    className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${importMethod === 'file' ? 'bg-white text-[#111827] shadow-sm' : 'text-[#6B7280] hover:text-[#111827]'}`}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                      importMethod === 'file' ? 'bg-white text-[#111827] shadow-xs' : 'text-[#6B7280] hover:text-[#111827]'
+                    }`}
                   >
-                    <Upload className="w-4 h-4" /> Upload Document (.pdf / .epub)
+                    <Upload className="w-3.5 h-3.5" /> Upload File (.pdf / .epub)
                   </button>
                   <button
                     type="button"
                     onClick={() => setImportMethod('text')}
-                    className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${importMethod === 'text' ? 'bg-white text-[#E07A5F] shadow-sm' : 'text-[#6B7280] hover:text-[#111827]'}`}
+                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                      importMethod === 'text' ? 'bg-white text-[#C2410C] shadow-xs' : 'text-[#6B7280] hover:text-[#111827]'
+                    }`}
                   >
-                    <FileText className="w-4 h-4" /> Paste Text (复制粘贴)
+                    <FileText className="w-3.5 h-3.5" /> Paste Article Text
                   </button>
                 </div>
               )}
@@ -835,9 +1125,13 @@ export default function Home() {
               {/* Method 1: File Upload */}
               {importMethod === 'file' ? (
                 <div>
-                  <h4 className="text-[11px] font-bold tracking-widest uppercase text-[#6B7280] mb-3">Upload File (PDF / EPUB)</h4>
+                  <h4 className="text-xs font-mono font-bold tracking-widest uppercase text-[#8C7A6B] mb-3">Upload Document</h4>
                   <div 
-                    className={"border-2 border-dashed rounded-2xl p-10 flex flex-col items-center justify-center text-center cursor-pointer group transition-colors " + (isDragging ? (importCategory==='book'?'border-[#3D5A80] bg-[#3D5A80]/5':'border-[#E07A5F] bg-[#E07A5F]/5') : 'border-[#D1D5DB] hover:border-[#9CA3AF] bg-[#FAF9F6]')} 
+                    className={`border-2 border-dashed rounded-2xl p-10 flex flex-col items-center justify-center text-center cursor-pointer transition-colors ${
+                      isDragging 
+                        ? (importCategory === 'book' ? 'border-[#3D5A80] bg-[#3D5A80]/5' : 'border-[#C2410C] bg-[#FFF1EB]') 
+                        : 'border-[#D7CCC8] hover:border-[#8C7A6B] bg-white'
+                    }`}
                     onClick={() => fileInputRef.current?.click()} 
                     onDragOver={handleDragOver} 
                     onDragLeave={handleDragLeave} 
@@ -846,14 +1140,16 @@ export default function Home() {
                     <input type="file" accept=".epub,.pdf" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
                     {isExtracting ? (
                       <>
-                        <Loader2 className="w-10 h-10 text-[#6B7280] animate-spin mb-4" />
-                        <p className="font-bold text-[#111827]">Processing Document...</p>
+                        <Loader2 className="w-10 h-10 text-[#6B7280] animate-spin mb-3" />
+                        <p className="font-serif font-bold text-[#111827]">Processing Document...</p>
                       </>
                     ) : (
                       <>
-                        <div className="w-14 h-14 bg-white rounded-full shadow-sm flex items-center justify-center mb-4 group-hover:scale-110 transition-transform"><Upload className="w-6 h-6 text-[#9CA3AF]" /></div>
-                        <p className="font-bold text-[#111827] mb-1">Click or Drag & Drop</p>
-                        <p className="text-xs text-[#6B7280]">Supports .epub and .pdf formats</p>
+                        <div className="w-12 h-12 bg-[#F6F4EE] rounded-2xl flex items-center justify-center mb-3 text-[#8C7A6B]">
+                          <Upload className="w-6 h-6" />
+                        </div>
+                        <p className="font-serif font-bold text-[#111827] mb-1">Click to Upload or Drag & Drop</p>
+                        <p className="text-xs text-[#8C7A6B]">Supports .epub and .pdf formats</p>
                       </>
                     )}
                   </div>
@@ -862,34 +1158,38 @@ export default function Home() {
                 /* Method 2: Paste Text */
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-[11px] font-bold tracking-widest uppercase text-[#6B7280] mb-2">Article Title (文章标题)</label>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-[#6B7280] mb-2">
+                      Article Title
+                    </label>
                     <input 
                       type="text" 
-                      placeholder="e.g. The Economist: The Future of AI (或留空自动提取)" 
+                      placeholder="e.g. The Economist: Deep Work in the Modern Age..." 
                       value={pastedTitle}
                       onChange={(e) => setPastedTitle(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl border border-[#D1D5DB] focus:outline-none focus:ring-2 focus:ring-[#E07A5F] focus:border-transparent text-sm bg-white"
+                      className="w-full px-4 py-2.5 rounded-xl border border-[#E5E5E5] focus:outline-none focus:ring-2 focus:ring-[#C2410C] text-sm bg-white font-serif"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold tracking-widest uppercase text-[#6B7280] mb-2">Article Content (文章正文)</label>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-[#6B7280] mb-2">
+                      Article Text
+                    </label>
                     <textarea 
                       rows={8}
-                      placeholder="Paste your English text or article here (直接粘贴文章正文)..."
+                      placeholder="Paste your English text or article here..." 
                       value={pastedText}
                       onChange={(e) => setPastedText(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl border border-[#D1D5DB] focus:outline-none focus:ring-2 focus:ring-[#E07A5F] focus:border-transparent text-sm leading-relaxed bg-white"
+                      className="w-full px-4 py-3 rounded-xl border border-[#E5E5E5] focus:outline-none focus:ring-2 focus:ring-[#C2410C] text-sm leading-relaxed bg-white font-serif resize-none"
                     />
                   </div>
                   <button
                     disabled={!pastedText.trim() || isExtracting}
                     onClick={handlePasteSave}
-                    className="w-full py-3.5 bg-[#E07A5F] hover:bg-[#D0694E] disabled:opacity-50 text-white font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
+                    className="w-full py-3.5 bg-[#C2410C] hover:bg-[#9A3412] disabled:opacity-50 text-white font-bold rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >
                     {isExtracting ? (
                       <>
                         <Loader2 className="w-5 h-5 animate-spin" />
-                        Saving to Cloud...
+                        Saving to Shelf...
                       </>
                     ) : (
                       <>
