@@ -516,7 +516,7 @@ export default function Home() {
               <span className="font-serif font-bold text-lg tracking-tight text-[#111827] block leading-tight">
                 Quiet Reading Tracker
               </span>
-              <span className="text-[10px] uppercase font-bold tracking-[0.15em] text-[#8C7A6B]">
+              <span className="text-xs uppercase font-semibold tracking-[0.15em] text-[#64748B]">
                 Personal Study Sanctuary
               </span>
             </div>
@@ -552,17 +552,17 @@ export default function Home() {
           <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8">
             <div className="max-w-2xl space-y-3">
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-mono font-bold tracking-[0.2em] text-[#8C7A6B] bg-[#EFECE6] px-2.5 py-0.5 rounded uppercase">
+                <span className="text-xs font-semibold tracking-wider text-[#44403C] bg-[#EAE6DE] px-3 py-1 rounded-md uppercase">
                   {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}
                 </span>
-                <span className="text-xs text-[#8C7A6B] font-serif">· Reading Dispatch</span>
+                <span className="text-xs font-medium text-[#64748B] font-serif">· Reading Dispatch</span>
               </div>
               <h1 className="text-4xl md:text-5xl font-bold tracking-tight font-serif text-[#111827] leading-[1.15]">
                 Welcome Back to Your Desk
               </h1>
               <p className="text-[#6B7280] text-base md:text-lg font-serif italic border-l-2 border-[#D7CCC8] pl-3 py-0.5">
                 &ldquo;For us, there is only the trying. The rest is not our business.&rdquo; 
-                <span className="text-xs not-italic text-[#8C7A6B] ml-2 font-mono">— T.S. Eliot</span>
+                <span className="text-xs not-italic font-medium text-[#64748B] ml-2 font-sans">— T.S. Eliot</span>
               </p>
             </div>
 
@@ -578,12 +578,12 @@ export default function Home() {
                 </div>
               </div>
               <div>
-                <span className="text-[10px] font-mono font-bold tracking-widest uppercase text-[#8C7A6B] block">
+                <span className="text-xs font-semibold tracking-wider uppercase text-[#64748B] block">
                   Today&apos;s Reading
                 </span>
-                <div className="flex items-baseline gap-1 mt-0.5">
+                <div className="flex items-baseline gap-1.5 mt-0.5">
                   <span className="text-2xl font-serif font-bold text-[#111827]">{readingStats.todayMins}</span>
-                  <span className="text-xs text-[#8C7A6B] font-mono">/ 60 mins</span>
+                  <span className="text-sm font-medium text-[#64748B]">/ 60 mins</span>
                 </div>
               </div>
               <div className="h-10 w-[1px] bg-[#E7E2D6] mx-1" />
@@ -592,7 +592,7 @@ export default function Home() {
                   <Flame className="w-4.5 h-4.5" />
                 </div>
                 <div>
-                  <span className="text-[10px] font-mono font-bold tracking-widest uppercase text-[#8C7A6B] block">Streak</span>
+                  <span className="text-xs font-semibold tracking-wider uppercase text-[#64748B] block">Streak</span>
                   <span className="text-base font-bold text-[#111827]">{readingStats.streak} Days</span>
                 </div>
               </div>
@@ -604,7 +604,7 @@ export default function Home() {
         <section className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <span className="text-[10px] font-mono font-bold tracking-[0.2em] text-[#8C7A6B] uppercase">
+              <span className="text-xs font-semibold tracking-[0.15em] text-[#64748B] uppercase">
                 Active Desk
               </span>
               <h2 className="text-2xl font-serif font-bold text-[#111827]">
@@ -641,7 +641,7 @@ export default function Home() {
 
                     {/* Footer ribbon */}
                     <div className="border-t border-white/10 pt-1 text-center">
-                      <span className="text-[8px] font-mono text-slate-400 font-bold">
+                      <span className="text-[9px] font-bold text-slate-300">
                         {mostRecentBook.progress}%
                       </span>
                     </div>
@@ -654,7 +654,7 @@ export default function Home() {
                 <div className="flex-1 min-w-0 flex flex-col justify-between py-1">
                   <div>
                     <div className="flex items-start justify-between gap-2 mb-1.5">
-                      <span className="text-[10px] font-mono font-bold tracking-widest uppercase text-[#3D5A80] bg-[#3D5A80]/10 px-2 py-0.5 rounded">
+                      <span className="text-xs font-semibold tracking-wider uppercase text-[#3D5A80] bg-[#3D5A80]/10 px-2.5 py-1 rounded-md">
                         Book in Progress
                       </span>
                       <button
@@ -685,8 +685,8 @@ export default function Home() {
 
                   <div className="mt-4 pt-3 border-t border-[#EAE5DA]">
                     <div className="flex justify-between items-center text-xs mb-1.5">
-                      <span className="font-mono text-[#8C7A6B] text-[11px]">Reading Progress</span>
-                      <span className="font-mono font-bold text-[#111827]">{mostRecentBook.progress}%</span>
+                      <span className="text-xs font-medium text-[#64748B]">Reading Progress</span>
+                      <span className="text-xs font-bold text-[#111827]">{mostRecentBook.progress}%</span>
                     </div>
                     <div className="w-full bg-[#E5E5E5] rounded-full h-1.5 overflow-hidden mb-3">
                       <div 
@@ -705,10 +705,10 @@ export default function Home() {
                 </div>
               </div>
             ) : (
-              <div className="border border-dashed border-[#D7CCC8] rounded-2xl p-8 flex flex-col items-center justify-center text-center text-[#8C7A6B] bg-[#FAF8F5]/40">
+              <div className="border border-dashed border-[#D7CCC8] rounded-2xl p-8 flex flex-col items-center justify-center text-center text-[#64748B] bg-[#FAF8F5]/40">
                 <Book className="w-8 h-8 mb-2 opacity-30 text-[#3D5A80]" />
                 <h3 className="font-serif font-bold text-base text-[#111827] mb-1">No Books in Progress</h3>
-                <p className="text-xs text-[#8C7A6B] mb-4">Import an EPUB or PDF book to display here.</p>
+                <p className="text-xs text-[#64748B] mb-4">Import an EPUB or PDF book to display here.</p>
                 <button
                   onClick={() => { setImportCategory('book'); setShowImportModal(true); }}
                   className="px-4 py-2 bg-[#1E293B] text-white rounded-xl text-xs font-semibold cursor-pointer"
@@ -742,7 +742,7 @@ export default function Home() {
                     </div>
 
                     <div className="border-t border-[#E7E2D6] pt-1 text-center">
-                      <span className="text-[7.5px] font-mono text-[#8C7A6B] font-bold">
+                      <span className="text-[9px] font-bold text-[#64748B]">
                         {mostRecentArticle.progress}%
                       </span>
                     </div>
@@ -753,7 +753,7 @@ export default function Home() {
                 <div className="flex-1 min-w-0 flex flex-col justify-between py-1">
                   <div>
                     <div className="flex items-start justify-between gap-2 mb-1.5">
-                      <span className="text-[10px] font-mono font-bold tracking-widest uppercase text-[#C2410C] bg-[#FFF1EB] px-2 py-0.5 rounded">
+                      <span className="text-xs font-semibold tracking-wider uppercase text-[#C2410C] bg-[#FFF1EB] px-2.5 py-1 rounded-md">
                         Article in Progress
                       </span>
                       <button
@@ -784,8 +784,8 @@ export default function Home() {
 
                   <div className="mt-4 pt-3 border-t border-[#EAE5DA]">
                     <div className="flex justify-between items-center text-xs mb-1.5">
-                      <span className="font-mono text-[#8C7A6B] text-[11px]">Reading Progress</span>
-                      <span className="font-mono font-bold text-[#111827]">{mostRecentArticle.progress}%</span>
+                      <span className="text-xs font-medium text-[#64748B]">Reading Progress</span>
+                      <span className="text-xs font-bold text-[#111827]">{mostRecentArticle.progress}%</span>
                     </div>
                     <div className="w-full bg-[#E5E5E5] rounded-full h-1.5 overflow-hidden mb-3">
                       <div 
@@ -804,10 +804,10 @@ export default function Home() {
                 </div>
               </div>
             ) : (
-              <div className="border border-dashed border-[#D7CCC8] rounded-2xl p-8 flex flex-col items-center justify-center text-center text-[#8C7A6B] bg-[#FAF8F5]/40 lg:border-l lg:border-[#E7E2D6] lg:pl-10">
+              <div className="border border-dashed border-[#D7CCC8] rounded-2xl p-8 flex flex-col items-center justify-center text-center text-[#64748B] bg-[#FAF8F5]/40 lg:border-l lg:border-[#E7E2D6] lg:pl-10">
                 <FileText className="w-8 h-8 mb-2 opacity-30 text-[#C2410C]" />
                 <h3 className="font-serif font-bold text-base text-[#111827] mb-1">No Articles in Progress</h3>
-                <p className="text-xs text-[#8C7A6B] mb-4">Paste text or upload a document to read here.</p>
+                <p className="text-xs text-[#64748B] mb-4">Paste text or upload a document to read here.</p>
                 <button
                   onClick={() => { setImportCategory('article'); setShowImportModal(true); }}
                   className="px-4 py-2 bg-[#C2410C] text-white rounded-xl text-xs font-semibold cursor-pointer"
@@ -824,7 +824,7 @@ export default function Home() {
           {/* Left Column: Living Shelves Showcases (2 cols) */}
           <div className="lg:col-span-2 space-y-8">
             <div>
-              <span className="text-[10px] font-mono font-bold tracking-[0.2em] text-[#8C7A6B] uppercase">
+              <span className="text-xs font-semibold tracking-[0.15em] text-[#64748B] uppercase">
                 Shelves & Archives
               </span>
               <h2 className="text-2xl font-serif font-bold text-[#111827]">
@@ -842,10 +842,10 @@ export default function Home() {
                 >
                   <div>
                     <div className="flex items-center justify-between mb-3">
-                      <span className="text-[10px] font-mono font-bold tracking-widest uppercase text-[#3D5A80] bg-[#3D5A80]/10 px-2.5 py-0.5 rounded">
+                      <span className="text-xs font-semibold tracking-wider uppercase text-[#3D5A80] bg-[#3D5A80]/10 px-2.5 py-1 rounded-md">
                         Personal Library
                       </span>
-                      <span className="text-xs font-mono font-bold text-[#111827]">
+                      <span className="text-xs font-semibold text-[#475569]">
                         {books.length} Volumes
                       </span>
                     </div>
@@ -891,10 +891,10 @@ export default function Home() {
                 >
                   <div>
                     <div className="flex items-center justify-between mb-3">
-                      <span className="text-[10px] font-mono font-bold tracking-widest uppercase text-[#C2410C] bg-[#FFF1EB] px-2.5 py-0.5 rounded">
+                      <span className="text-xs font-semibold tracking-wider uppercase text-[#C2410C] bg-[#FFF1EB] px-2.5 py-1 rounded-md">
                         Article Collection
                       </span>
-                      <span className="text-xs font-mono font-bold text-[#111827]">
+                      <span className="text-xs font-semibold text-[#475569]">
                         {articles.length} Articles
                       </span>
                     </div>
@@ -944,7 +944,7 @@ export default function Home() {
           {/* Right Column: Knowledge Study Ledger (Ruled Notebook Index) */}
           <div className="space-y-4">
             <div>
-              <span className="text-[10px] font-mono font-bold tracking-[0.2em] text-[#8C7A6B] uppercase">
+              <span className="text-xs font-semibold tracking-[0.15em] text-[#64748B] uppercase">
                 Field Notes
               </span>
               <h2 className="text-2xl font-serif font-bold text-[#111827]">
@@ -955,10 +955,10 @@ export default function Home() {
             {/* Ruled Notebook Ledger Catalog (Unboxed classic index layout) */}
             <div className="pt-2">
               <div className="border-b border-[#E7E2D6] pb-3 mb-1 flex items-center justify-between">
-                <span className="text-xs font-serif italic text-[#8C7A6B]">
+                <span className="text-xs font-serif italic text-[#64748B]">
                   Spaced Repetition & Reading Memory
                 </span>
-                <span className="text-[10px] font-mono text-[#8C7A6B] uppercase tracking-wider">
+                <span className="text-xs font-medium text-[#71717A] uppercase tracking-wider">
                   Index
                 </span>
               </div>
@@ -978,11 +978,11 @@ export default function Home() {
                       <span className="block font-serif font-bold text-sm text-[#111827] group-hover:text-[#3D5A80] transition-colors">
                         Vocabulary
                       </span>
-                      <span className="text-[11px] font-mono text-[#8C7A6B]">{libStats.words} collected</span>
+                      <span className="text-xs font-medium text-[#57534E]">{libStats.words} collected</span>
                     </div>
                   </div>
-                  <span className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-md ${
-                    libStats.dueWords > 0 ? 'bg-[#C2410C] text-white shadow-2xs' : 'bg-[#EFECE6] text-[#8C7A6B]'
+                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-md transition-colors ${
+                    libStats.dueWords > 0 ? 'bg-[#C2410C] text-white shadow-xs' : 'bg-[#EAE6DE] text-[#57534E]'
                   }`}>
                     {libStats.dueWords} Due
                   </span>
@@ -1001,11 +1001,11 @@ export default function Home() {
                       <span className="block font-serif font-bold text-sm text-[#111827] group-hover:text-[#C2410C] transition-colors">
                         Expressions
                       </span>
-                      <span className="text-[11px] font-mono text-[#8C7A6B]">{libStats.phrases} collocations</span>
+                      <span className="text-xs font-medium text-[#57534E]">{libStats.phrases} collocations</span>
                     </div>
                   </div>
-                  <span className={`text-[10px] font-mono font-bold px-2.5 py-1 rounded-md ${
-                    libStats.duePhrases > 0 ? 'bg-[#C2410C] text-white shadow-2xs' : 'bg-[#EFECE6] text-[#8C7A6B]'
+                  <span className={`text-xs font-semibold px-2.5 py-1 rounded-md transition-colors ${
+                    libStats.duePhrases > 0 ? 'bg-[#C2410C] text-white shadow-xs' : 'bg-[#EAE6DE] text-[#57534E]'
                   }`}>
                     {libStats.duePhrases} Due
                   </span>
@@ -1024,7 +1024,7 @@ export default function Home() {
                       <span className="block font-serif font-bold text-sm text-[#111827] group-hover:text-[#15803D] transition-colors">
                         Sentences
                       </span>
-                      <span className="text-[11px] font-mono text-[#8C7A6B]">{libStats.sentences} exemplary</span>
+                      <span className="text-xs font-medium text-[#57534E]">{libStats.sentences} exemplary</span>
                     </div>
                   </div>
                   <ChevronRight className="w-4 h-4 text-[#9CA3AF] group-hover:translate-x-1 transition-transform" />
@@ -1043,7 +1043,7 @@ export default function Home() {
                       <span className="block font-serif font-bold text-sm text-[#111827] group-hover:text-[#D97706] transition-colors">
                         Reading Notes
                       </span>
-                      <span className="text-[11px] font-mono text-[#8C7A6B]">{libStats.notes} reflections</span>
+                      <span className="text-xs font-medium text-[#57534E]">{libStats.notes} reflections</span>
                     </div>
                   </div>
                   <ChevronRight className="w-4 h-4 text-[#9CA3AF] group-hover:translate-x-1 transition-transform" />
@@ -1059,14 +1059,14 @@ export default function Home() {
             {/* Left Narrative & Stats Block (No empty void) */}
             <div className="space-y-3 max-w-sm shrink-0">
               <div className="flex items-center gap-3">
-                <span className="text-[10px] font-mono font-bold tracking-[0.2em] text-[#8C7A6B] uppercase">
+                <span className="text-xs font-semibold tracking-[0.15em] text-[#64748B] uppercase">
                   Habit Matrix
                 </span>
                 {(() => {
                   const days = displayDays.length > 0 ? displayDays : [];
                   const activeCount = days.filter(d => readingStats.history && readingStats.history[d] > 0).length;
                   return (
-                    <span className="text-[11px] font-mono font-bold text-[#8C7A6B] bg-[#EFECE6] px-2.5 py-0.5 rounded">
+                    <span className="text-xs font-semibold text-[#44403C] bg-[#EAE6DE] px-3 py-1 rounded-md">
                       {activeCount} / 30 Days Active
                     </span>
                   );
@@ -1116,12 +1116,12 @@ export default function Home() {
                         style={{
                           backgroundColor: isRead ? color : '#FAF8F5',
                           border: isRead ? `1px solid ${color}` : '1px solid #D7CCC8',
-                          color: isRead ? '#FFFFFF' : '#8C7A6B',
+                          color: isRead ? '#FFFFFF' : '#64748B',
                           boxShadow: isRead ? `0 2px 8px ${color}45` : 'none'
                         }}
                         title={!isPlaceholder ? `${dateStr}: ${mins > 0 ? `${mins} mins read` : 'No reading recorded'}` : `Day ${i + 1}`}
                       >
-                        <span className="text-[11px] font-mono font-bold leading-none">
+                        <span className="text-xs font-semibold leading-none">
                           {i + 1}
                         </span>
                       </div>
@@ -1148,7 +1148,7 @@ export default function Home() {
               
               {/* Category Selector */}
               <div>
-                <h4 className="text-xs font-mono font-bold tracking-widest uppercase text-[#8C7A6B] mb-3">Target Shelf</h4>
+                <h4 className="text-xs font-semibold tracking-wider uppercase text-[#64748B] mb-3">Target Shelf</h4>
                 <div className="grid grid-cols-2 gap-4">
                   <button 
                     onClick={() => { setImportCategory('book'); setImportMethod('file'); }}
@@ -1198,12 +1198,12 @@ export default function Home() {
               {/* Method 1: File Upload */}
               {importMethod === 'file' ? (
                 <div>
-                  <h4 className="text-xs font-mono font-bold tracking-widest uppercase text-[#8C7A6B] mb-3">Upload Document</h4>
+                  <h4 className="text-xs font-semibold tracking-wider uppercase text-[#64748B] mb-3">Upload Document</h4>
                   <div 
                     className={`border-2 border-dashed rounded-2xl p-10 flex flex-col items-center justify-center text-center cursor-pointer transition-colors ${
                       isDragging 
                         ? (importCategory === 'book' ? 'border-[#3D5A80] bg-[#3D5A80]/5' : 'border-[#C2410C] bg-[#FFF1EB]') 
-                        : 'border-[#D7CCC8] hover:border-[#8C7A6B] bg-white'
+                        : 'border-[#D7CCC8] hover:border-[#64748B] bg-white'
                     }`}
                     onClick={() => fileInputRef.current?.click()} 
                     onDragOver={handleDragOver} 
@@ -1218,11 +1218,11 @@ export default function Home() {
                       </>
                     ) : (
                       <>
-                        <div className="w-12 h-12 bg-[#F6F4EE] rounded-2xl flex items-center justify-center mb-3 text-[#8C7A6B]">
+                        <div className="w-12 h-12 bg-[#F6F4EE] rounded-2xl flex items-center justify-center mb-3 text-[#64748B]">
                           <Upload className="w-6 h-6" />
                         </div>
                         <p className="font-serif font-bold text-[#111827] mb-1">Click to Upload or Drag & Drop</p>
-                        <p className="text-xs text-[#8C7A6B]">Supports .epub and .pdf formats</p>
+                        <p className="text-xs text-[#64748B]">Supports .epub and .pdf formats</p>
                       </>
                     )}
                   </div>

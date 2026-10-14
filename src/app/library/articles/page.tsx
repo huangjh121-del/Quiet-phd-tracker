@@ -588,7 +588,7 @@ export default function ArticleShelf() {
                                 <span className={`${theme.mastheadColor} truncate max-w-[180px]`}>
                                   {displaySource}
                                 </span>
-                                <span className="text-[#8C7A6B] bg-[#EFECE6] px-2 py-0.5 rounded text-[10px] font-mono shrink-0">
+                                <span className="text-[#44403C] bg-[#EAE6DE] px-2.5 py-0.5 rounded-md text-xs font-semibold shrink-0">
                                   {displayDate}
                                 </span>
                               </div>
@@ -615,7 +615,7 @@ export default function ArticleShelf() {
                                   &ldquo;{excerpt}...&rdquo;
                                 </div>
                               ) : (
-                                <div className="text-xs text-[#8C7A6B] italic font-serif opacity-75">
+                                <div className="text-xs text-[#64748B] italic font-serif opacity-75">
                                   Click to read and collect vocabulary...
                                 </div>
                               )}
@@ -623,23 +623,23 @@ export default function ArticleShelf() {
 
                             {/* Bottom Editorial Bar & Stamp */}
                             <div className="relative z-10 pl-2 mt-auto pt-4 border-t border-[#E7E2D6] flex items-center justify-between">
-                              <div className="flex items-center gap-1.5 text-[11px] font-mono text-[#8C7A6B]">
+                              <div className="flex items-center gap-1.5 text-xs font-medium text-[#64748B]">
                                 <Clock className="w-3.5 h-3.5 text-[#C2410C]" />
                                 <span>{readTimeMins} MIN READ</span>
                               </div>
 
                               {/* Rubber Stamp Status */}
                               {article.isCompleted ? (
-                                <div className="border border-[#15803D] text-[#15803D] bg-[#DCFCE7]/60 -rotate-3 px-2.5 py-0.5 text-[9px] font-mono font-bold tracking-widest rounded uppercase shadow-2xs">
+                                <div className="border border-[#15803D] text-[#15803D] bg-[#DCFCE7]/60 -rotate-3 px-2.5 py-0.5 text-[10px] font-bold tracking-widest rounded uppercase shadow-2xs">
                                   COMPLETED
                                 </div>
                               ) : article.progress > 0 ? (
-                                <div className="border border-[#D97706] text-[#D97706] bg-[#FEF3C7]/60 px-2 py-0.5 text-[9px] font-mono font-bold tracking-wider rounded uppercase flex items-center gap-1">
+                                <div className="border border-[#D97706] text-[#D97706] bg-[#FEF3C7]/60 px-2 py-0.5 text-[10px] font-bold tracking-wider rounded uppercase flex items-center gap-1">
                                   <span>READING</span>
                                   <span>{article.progress}%</span>
                                 </div>
                               ) : (
-                                <div className="border border-[#64748B] text-[#64748B] bg-[#F1F5F9] px-2 py-0.5 text-[9px] font-mono font-semibold tracking-wider rounded uppercase">
+                                <div className="border border-[#64748B] text-[#64748B] bg-[#F1F5F9] px-2 py-0.5 text-[10px] font-semibold tracking-wider rounded uppercase">
                                   NEW
                                 </div>
                               )}

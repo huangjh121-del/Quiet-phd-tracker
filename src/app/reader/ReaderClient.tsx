@@ -1295,12 +1295,12 @@ export default function Reader() {
                 </div>
                 <div>
                   <h3 className="font-serif font-bold text-lg text-[#111827]">Add Reading Note</h3>
-                  <span className="text-[10px] font-mono text-[#8C7A6B] block">Highlight & personal reflections</span>
+                  <span className="text-xs text-[#64748B] block">Highlight & personal reflections</span>
                 </div>
               </div>
               <button 
                 onClick={() => setNoteModal(null)} 
-                className="p-1 rounded-full text-[#8C7A6B] hover:text-[#111827] cursor-pointer"
+                className="p-1 rounded-full text-[#64748B] hover:text-[#111827] cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1315,7 +1315,7 @@ export default function Reader() {
 
             {/* User Thought / Note textarea */}
             <div className="space-y-1.5">
-              <label className="text-[11px] font-mono uppercase tracking-wider text-[#8C7A6B]">
+              <label className="text-xs font-semibold uppercase tracking-wider text-[#64748B]">
                 Personal Reflection or Thoughts (Optional)
               </label>
               <textarea
